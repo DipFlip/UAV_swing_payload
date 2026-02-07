@@ -16,9 +16,8 @@ let prevData = null;
 const simLqr = new Simulation('lqr');
 const simPid = new Simulation('pid');
 
-const SEND_INTERVAL = 0.04; // 40ms per frame (25 Hz visual update)
-const SUBSTEPS = 8;         // 8 substeps per frame = 4x realtime
-let accumulator = 0;
+const SIM_DT = 0.02;  // fixed sim timestep
+let simAccum = 0;      // fractional sim-time accumulator
 
 // --- Chart panel toggle ---
 const chartPanelEl = document.getElementById('chart-panel');
@@ -50,22 +49,29 @@ if (window.innerWidth < 768) {
     hudToggle.innerHTML = '&#x25B2;';
 }
 
+// --- Time scale slider ---
+const sliderTimescale = document.getElementById('slider-timescale');
+const timescaleVal = document.getElementById('timescale-val');
+sliderTimescale.addEventListener('input', () => { timescaleVal.textContent = sliderTimescale.value; });
+
 // --- Simulation loop via render callback ---
 sceneObjects.setOnAnimate((wallDt) => {
     // Clamp to 100ms to handle tab backgrounding
     const dt = Math.min(wallDt, 0.1);
-    accumulator += dt;
+    const timeScale = parseFloat(sliderTimescale.value) / 100;
+    simAccum += dt * timeScale;
 
-    while (accumulator >= SEND_INTERVAL) {
-        accumulator -= SEND_INTERVAL;
+    let latestLqr, latestPid;
+    let stepped = false;
+    while (simAccum >= SIM_DT) {
+        simAccum -= SIM_DT;
+        latestLqr = simLqr.step();
+        latestPid = simPid.step();
+        stepped = true;
+    }
 
-        let stateLqr, statePid;
-        for (let i = 0; i < SUBSTEPS; i++) {
-            stateLqr = simLqr.step();
-            statePid = simPid.step();
-        }
-
-        const data = { type: 'dual_state', lqr: stateLqr, pid: statePid };
+    if (stepped) {
+        const data = { type: 'dual_state', lqr: latestLqr, pid: latestPid };
         updateScene(sceneObjects, data);
         updateHUD(data);
         chartPanel.update(data, prevData);
@@ -142,7 +148,8 @@ function startPattern() {
         lastTime = now;
 
         const speed = parseFloat(sliderSpeed.value) || 1.0;
-        progress += (speed / 3.0) * dt;
+        const timeScale = parseFloat(sliderTimescale.value) / 100;
+        progress += (speed / 3.0) * dt * timeScale;
         if (progress >= 4) progress -= 4;
 
         const seg = Math.floor(progress);

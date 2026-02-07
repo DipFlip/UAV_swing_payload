@@ -326,9 +326,9 @@ function computeLqrControl(state, goal, K_lat, K_vert, params) {
     F_z += (params.m_d + params.m_w) * params.g;
 
     // Saturation
-    F_x = Math.max(-40, Math.min(40, F_x));
-    F_y = Math.max(-40, Math.min(40, F_y));
-    F_z = Math.max(0, Math.min(100, F_z));
+    F_x = Math.max(-32, Math.min(32, F_x));
+    F_y = Math.max(-32, Math.min(32, F_y));
+    F_z = Math.max(0, Math.min(80, F_z));
 
     return [F_x, F_y, F_z];
 }
@@ -377,9 +377,9 @@ class PIDController {
 
         F_z += (m_d + m_w) * g;
 
-        F_x = Math.max(-40, Math.min(40, F_x));
-        F_y = Math.max(-40, Math.min(40, F_y));
-        F_z = Math.max(0, Math.min(100, F_z));
+        F_x = Math.max(-32, Math.min(32, F_x));
+        F_y = Math.max(-32, Math.min(32, F_y));
+        F_z = Math.max(0, Math.min(80, F_z));
 
         return [F_x, F_y, F_z];
     }

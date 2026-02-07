@@ -5,11 +5,21 @@
 
 import { physicsToThree } from './scene.js';
 
-function updateDroneSystem(system, dronePos, weightPos) {
+function updateDroneSystem(system, dronePos, weightPos, control) {
     const { droneGroup, rope, weight } = system;
 
     const dp = physicsToThree(dronePos.x, dronePos.y, dronePos.z);
     droneGroup.position.set(dp.x, dp.y, dp.z);
+
+    // Tilt drone based on lateral thrust (quadrotor banks to accelerate)
+    if (control) {
+        const Fz = Math.max(control.Fz, 1); // avoid division by zero
+        droneGroup.rotation.set(
+            Math.atan2(control.Fy, Fz),   // roll (physics y → Three.js z)
+            0,
+            -Math.atan2(control.Fx, Fz)   // pitch (physics x → Three.js x)
+        );
+    }
 
     const wp = physicsToThree(weightPos.x, weightPos.y, weightPos.z);
     weight.position.set(wp.x, wp.y, wp.z);
@@ -25,8 +35,8 @@ function updateDroneSystem(system, dronePos, weightPos) {
 export function updateScene(sceneObjects, data) {
     const { lqr, pid, goalMarker, lqrLabel, pidLabel } = sceneObjects;
 
-    const lqrP = updateDroneSystem(lqr, data.lqr.drone, data.lqr.weight);
-    const pidP = updateDroneSystem(pid, data.pid.drone, data.pid.weight);
+    const lqrP = updateDroneSystem(lqr, data.lqr.drone, data.lqr.weight, data.lqr.control);
+    const pidP = updateDroneSystem(pid, data.pid.drone, data.pid.weight, data.pid.control);
 
     const gp = physicsToThree(data.lqr.goal.x, data.lqr.goal.y, data.lqr.goal.z);
     goalMarker.position.set(gp.x, gp.y, gp.z);
