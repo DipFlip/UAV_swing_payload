@@ -1,15 +1,24 @@
 /**
- * Main entry point: WebSocket connection and UI event wiring.
+ * Main entry point: local simulation loop and UI event wiring.
  */
 
 import { createScene } from './scene.js';
-import { setTargets, interpolateScene, updateHUD } from './simulation.js';
+import { updateScene, updateHUD } from './simulation.js';
 import { ChartPanel } from './charts.js';
+import { Simulation } from './sim-engine.js';
 
 const canvas = document.getElementById('canvas');
 const sceneObjects = createScene(canvas);
 const chartPanel = new ChartPanel(document.getElementById('chart-content'));
 let prevData = null;
+
+// --- Simulations ---
+const simLqr = new Simulation('lqr');
+const simPid = new Simulation('pid');
+
+const SEND_INTERVAL = 0.04; // 40ms per frame (25 Hz visual update)
+const SUBSTEPS = 8;         // 8 substeps per frame = 4x realtime
+let accumulator = 0;
 
 // --- Chart panel toggle ---
 const chartPanelEl = document.getElementById('chart-panel');
@@ -41,8 +50,28 @@ if (window.innerWidth < 768) {
     hudToggle.innerHTML = '&#x25B2;';
 }
 
-// Run interpolation every frame via the render loop
-sceneObjects.setOnAnimate(() => interpolateScene(sceneObjects));
+// --- Simulation loop via render callback ---
+sceneObjects.setOnAnimate((wallDt) => {
+    // Clamp to 100ms to handle tab backgrounding
+    const dt = Math.min(wallDt, 0.1);
+    accumulator += dt;
+
+    while (accumulator >= SEND_INTERVAL) {
+        accumulator -= SEND_INTERVAL;
+
+        let stateLqr, statePid;
+        for (let i = 0; i < SUBSTEPS; i++) {
+            stateLqr = simLqr.step();
+            statePid = simPid.step();
+        }
+
+        const data = { type: 'dual_state', lqr: stateLqr, pid: statePid };
+        updateScene(sceneObjects, data);
+        updateHUD(data);
+        chartPanel.update(data, prevData);
+        prevData = data;
+    }
+});
 
 // --- Slider value display ---
 const sliderX = document.getElementById('slider-x');
@@ -53,26 +82,20 @@ const yVal = document.getElementById('y-val');
 const zVal = document.getElementById('z-val');
 
 function sendGoal() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'set_goal',
-            x: parseFloat(sliderX.value),
-            y: parseFloat(sliderY.value),
-            z: parseFloat(sliderZ.value),
-        }));
-    }
+    const x = parseFloat(sliderX.value);
+    const y = parseFloat(sliderY.value);
+    const z = parseFloat(sliderZ.value);
+    simLqr.setGoal(x, y, z);
+    simPid.setGoal(x, y, z);
 }
 
 const sliderAggr = document.getElementById('slider-aggr');
 const aggrVal = document.getElementById('aggr-val');
 
 function sendAggression() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'set_aggression',
-            value: parseFloat(sliderAggr.value) / 100.0,
-        }));
-    }
+    const aggr = parseFloat(sliderAggr.value) / 100.0;
+    simLqr.setAggression(aggr);
+    simPid.setAggression(aggr);
 }
 
 sliderX.addEventListener('input', () => { xVal.textContent = sliderX.value; sendGoal(); });
@@ -80,46 +103,10 @@ sliderY.addEventListener('input', () => { yVal.textContent = sliderY.value; send
 sliderZ.addEventListener('input', () => { zVal.textContent = sliderZ.value; sendGoal(); });
 sliderAggr.addEventListener('input', () => { aggrVal.textContent = sliderAggr.value; sendAggression(); });
 
-// --- WebSocket ---
-let ws = null;
+// --- Status ---
 const statusEl = document.getElementById('hud-status');
-
-function connect() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-        statusEl.textContent = 'Status: Connected';
-        statusEl.style.color = '#00ff88';
-    };
-
-    ws.onclose = () => {
-        statusEl.textContent = 'Status: Disconnected';
-        statusEl.style.color = '#ff4444';
-        setTimeout(connect, 2000);
-    };
-
-    ws.onerror = () => {
-        statusEl.textContent = 'Status: Error';
-        statusEl.style.color = '#ff4444';
-    };
-
-    ws.onmessage = (event) => {
-        const raw = JSON.parse(event.data);
-        const data = raw.t === 'd'
-            ? { type: 'dual_state', lqr: raw.l, pid: raw.p }
-            : raw;
-        if (data.type === 'dual_state') {
-            setTargets(data);
-            updateHUD(data);
-            chartPanel.update(data, prevData);
-            prevData = data;
-        }
-    };
-}
-
-connect();
+statusEl.textContent = 'Status: Running locally';
+statusEl.style.color = '#00ff88';
 
 // --- Pattern animation ---
 const sliderSpeed = document.getElementById('slider-speed');
@@ -145,18 +132,16 @@ function startPattern() {
     btnPattern.textContent = 'Stop';
     btnPattern.style.background = '#ffaa00';
 
-    // Total perimeter progress [0, 4) — each integer is one corner
     let progress = 0;
     let lastTime = performance.now();
 
     function tick(now) {
         if (!patternActive) return;
 
-        const dt = (now - lastTime) / 1000; // seconds
+        const dt = (now - lastTime) / 1000;
         lastTime = now;
 
         const speed = parseFloat(sliderSpeed.value) || 1.0;
-        // speed=1 → full lap in 12s (3s per edge), speed=3 → 4s per lap
         progress += (speed / 3.0) * dt;
         if (progress >= 4) progress -= 4;
 
@@ -168,9 +153,8 @@ function startPattern() {
         const gy = a.y + (b.y - a.y) * t;
         const gz = a.z + (b.z - a.z) * t;
 
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'set_goal', x: gx, y: gy, z: gz }));
-        }
+        simLqr.setGoal(gx, gy, gz);
+        simPid.setGoal(gx, gy, gz);
 
         sliderX.value = gx; xVal.textContent = gx.toFixed(1);
         sliderY.value = gy; yVal.textContent = gy.toFixed(1);
@@ -199,11 +183,10 @@ document.getElementById('btn-go').addEventListener('click', sendGoal);
 
 document.getElementById('btn-reset').addEventListener('click', () => {
     stopPattern();
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'reset' }));
-        sliderX.value = 0; xVal.textContent = '0.0';
-        sliderY.value = 0; yVal.textContent = '0.0';
-        sliderZ.value = 0; zVal.textContent = '0.0';
-        prevData = null;
-    }
+    simLqr.reset();
+    simPid.reset();
+    sliderX.value = 0; xVal.textContent = '0.0';
+    sliderY.value = 0; yVal.textContent = '0.0';
+    sliderZ.value = 0; zVal.textContent = '0.0';
+    prevData = null;
 });

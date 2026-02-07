@@ -155,16 +155,19 @@ export function createScene(canvas) {
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Animation loop — interpolation callback set externally
+    // Animation loop — callback receives wall-clock delta in seconds
     let onAnimate = null;
+    let lastTime = 0;
 
-    function animate() {
+    function animate(now) {
         requestAnimationFrame(animate);
-        if (onAnimate) onAnimate();
+        const dt = lastTime ? (now - lastTime) / 1000 : 0;
+        lastTime = now;
+        if (onAnimate) onAnimate(dt);
         controls.update();
         renderer.render(scene, camera);
     }
-    animate();
+    requestAnimationFrame(animate);
 
     return {
         scene, camera, renderer, controls,
