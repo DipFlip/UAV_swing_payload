@@ -44,6 +44,11 @@ function createDroneSystem(scene, bodyColor, weightColor, ropeColor, propColor) 
     group.position.set(0, 4, 0);
     scene.add(group);
 
+    // Force arrow (shows applied acceleration direction)
+    const arrowDir = new THREE.Vector3(0, 1, 0);
+    const arrowHelper = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(), 1, 0xff4444, 0.3, 0.15);
+    scene.add(arrowHelper);
+
     // Rope
     const ropeMat = new THREE.LineBasicMaterial({ color: ropeColor, linewidth: 2 });
     const ropeGeo = new THREE.BufferGeometry().setFromPoints([
@@ -60,7 +65,7 @@ function createDroneSystem(scene, bodyColor, weightColor, ropeColor, propColor) 
     weight.castShadow = true;
     scene.add(weight);
 
-    return { droneGroup: group, rope, weight };
+    return { droneGroup: group, rope, weight, arrowHelper };
 }
 
 export function createScene(canvas) {
@@ -133,7 +138,7 @@ export function createScene(canvas) {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geo.setDrawRange(0, 0);
-        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 });
+        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6, linewidth: 2 });
         const line = new THREE.Line(geo, mat);
         scene.add(line);
         return { line, head: 0, count: 0, maxPoints };

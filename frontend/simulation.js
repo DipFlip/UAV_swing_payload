@@ -3,22 +3,39 @@
  * Direct position updates from local simulation — no interpolation needed.
  */
 
+import * as THREE from 'three';
 import { physicsToThree } from './scene.js';
 
+const TILT_SMOOTH = 0.15; // per-update blend factor for rotation smoothing
+const lerp = (a, b, t) => a + (b - a) * t;
+
 function updateDroneSystem(system, dronePos, weightPos, control) {
-    const { droneGroup, rope, weight } = system;
+    const { droneGroup, rope, weight, arrowHelper } = system;
 
     const dp = physicsToThree(dronePos.x, dronePos.y, dronePos.z);
     droneGroup.position.set(dp.x, dp.y, dp.z);
 
-    // Tilt drone based on lateral thrust (quadrotor banks to accelerate)
+    // Tilt drone based on lateral thrust (smoothed to reduce jerkiness)
     if (control) {
-        const Fz = Math.max(control.Fz, 1); // avoid division by zero
-        droneGroup.rotation.set(
-            Math.atan2(control.Fy, Fz),   // roll (physics y → Three.js z)
-            0,
-            -Math.atan2(control.Fx, Fz)   // pitch (physics x → Three.js x)
-        );
+        const Fz = Math.max(control.Fz, 1);
+        const targetX = Math.atan2(control.Fy, Fz);
+        const targetZ = -Math.atan2(control.Fx, Fz);
+        droneGroup.rotation.x = lerp(droneGroup.rotation.x, targetX, TILT_SMOOTH);
+        droneGroup.rotation.z = lerp(droneGroup.rotation.z, targetZ, TILT_SMOOTH);
+
+        // Update force arrow: show net applied force in Three.js coords
+        // Physics (Fx, Fy, Fz) → Three.js (Fx, Fz, Fy)
+        const fDir = new THREE.Vector3(control.Fx, control.Fz, control.Fy);
+        const fLen = fDir.length();
+        if (fLen > 0.1) {
+            fDir.divideScalar(fLen);
+            arrowHelper.setDirection(fDir);
+            arrowHelper.setLength(Math.min(fLen / 20, 3), 0.3, 0.15);
+            arrowHelper.visible = true;
+        } else {
+            arrowHelper.visible = false;
+        }
+        arrowHelper.position.set(dp.x, dp.y, dp.z);
     }
 
     const wp = physicsToThree(weightPos.x, weightPos.y, weightPos.z);
