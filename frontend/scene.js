@@ -90,7 +90,7 @@ export function createScene(canvas) {
     const camera = new THREE.PerspectiveCamera(
         60, window.innerWidth / window.innerHeight, 0.1, 200
     );
-    camera.position.set(12, 10, 12);
+    camera.position.set(18, 14, 18);
     camera.lookAt(0, 4, 0);
 
     // Controls
