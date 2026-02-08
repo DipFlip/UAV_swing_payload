@@ -119,6 +119,27 @@ sliderY.addEventListener('input', () => { yVal.textContent = sliderY.value; send
 sliderZ.addEventListener('input', () => { zVal.textContent = sliderZ.value; sendGoal(); });
 sliderAggr.addEventListener('input', () => { aggrVal.textContent = sliderAggr.value; sendAggression(); });
 
+// --- Physics sliders ---
+const sliderMd = document.getElementById('slider-md');
+const mdVal = document.getElementById('md-val');
+const sliderMw = document.getElementById('slider-mw');
+const mwVal = document.getElementById('mw-val');
+const sliderFmax = document.getElementById('slider-fmax');
+const fmaxVal = document.getElementById('fmax-val');
+
+function sendParams() {
+    const m_d = parseFloat(sliderMd.value);
+    const m_w = parseFloat(sliderMw.value);
+    const maxLateral = parseFloat(sliderFmax.value);
+    const maxThrust = maxLateral * 2.5; // keep thrust proportional
+    simLqr.setParams({ m_d, m_w, maxLateral, maxThrust });
+    simPid.setParams({ m_d, m_w, maxLateral, maxThrust });
+}
+
+sliderMd.addEventListener('input', () => { mdVal.textContent = sliderMd.value; sendParams(); });
+sliderMw.addEventListener('input', () => { mwVal.textContent = sliderMw.value; sendParams(); });
+sliderFmax.addEventListener('input', () => { fmaxVal.textContent = sliderFmax.value; sendParams(); });
+
 // --- Status ---
 const statusEl = document.getElementById('hud-status');
 statusEl.textContent = 'Status: Running locally';

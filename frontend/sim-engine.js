@@ -203,10 +203,12 @@ function solveCARE(A, B, Q, R, n) {
 // ─── Physics ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_PARAMS = {
-    m_d: 2.0,   // drone mass (kg)
-    m_w: 5.0,   // weight mass (kg)
-    L: 4.0,     // rope length (m)
-    g: 9.81,    // gravity (m/s^2)
+    m_d: 2.0,          // drone mass (kg)
+    m_w: 5.0,          // weight mass (kg)
+    L: 4.0,            // rope length (m)
+    g: 9.81,           // gravity (m/s^2)
+    maxLateral: 32,    // max lateral force per axis (N)
+    maxThrust: 80,     // max vertical thrust (N)
 };
 
 function solve2x2(a11, a12, a21, a22, b1, b2) {
@@ -326,9 +328,10 @@ function computeLqrControl(state, goal, K_lat, K_vert, params) {
     F_z += (params.m_d + params.m_w) * params.g;
 
     // Saturation
-    F_x = Math.max(-32, Math.min(32, F_x));
-    F_y = Math.max(-32, Math.min(32, F_y));
-    F_z = Math.max(0, Math.min(80, F_z));
+    const ml = params.maxLateral, mt = params.maxThrust;
+    F_x = Math.max(-ml, Math.min(ml, F_x));
+    F_y = Math.max(-ml, Math.min(ml, F_y));
+    F_z = Math.max(0, Math.min(mt, F_z));
 
     return [F_x, F_y, F_z];
 }
@@ -381,9 +384,10 @@ class PIDController {
 
         F_z += (m_d + m_w) * g;
 
-        F_x = Math.max(-32, Math.min(32, F_x));
-        F_y = Math.max(-32, Math.min(32, F_y));
-        F_z = Math.max(0, Math.min(80, F_z));
+        const ml = this.params.maxLateral, mt = this.params.maxThrust;
+        F_x = Math.max(-ml, Math.min(ml, F_x));
+        F_y = Math.max(-ml, Math.min(ml, F_y));
+        F_z = Math.max(0, Math.min(mt, F_z));
 
         return [F_x, F_y, F_z];
     }
@@ -494,6 +498,15 @@ export class Simulation {
         this.pid.pidZ.kp = 20.0 * aggr;
         this.pid.pidZ.ki = 4.0 * aggr;
         this.pid.pidZ.kd = 15.0 * aggr;
+    }
+
+    setParams(updates) {
+        Object.assign(this.params, updates);
+        this.pid.params = this.params;
+        // Recompute LQR gains for new params
+        const { K_lat, K_vert } = computeLqrGains(this.params);
+        this.K_lat = K_lat;
+        this.K_vert = K_vert;
     }
 
     reset() {
