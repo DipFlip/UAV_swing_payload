@@ -340,20 +340,24 @@ class PIDAxis {
         this.kp = kp; this.ki = ki; this.kd = kd;
         this.windup = windup;
         this.integral = 0;
-        this.prevError = 0;
+        this.prevMeasurement = null;
     }
 
-    step(error, dt) {
+    step(error, measurement, dt) {
         this.integral += error * dt;
         this.integral = Math.max(-this.windup, Math.min(this.windup, this.integral));
-        const derivative = dt > 0 ? (error - this.prevError) / dt : 0;
-        this.prevError = error;
+        // Derivative on measurement (not error) to avoid derivative kick on setpoint changes
+        let derivative = 0;
+        if (this.prevMeasurement !== null && dt > 0) {
+            derivative = -(measurement - this.prevMeasurement) / dt;
+        }
+        this.prevMeasurement = measurement;
         return this.kp * error + this.ki * this.integral + this.kd * derivative;
     }
 
     reset() {
         this.integral = 0;
-        this.prevError = 0;
+        this.prevMeasurement = null;
     }
 }
 
@@ -371,9 +375,9 @@ class PIDController {
         const ey = goal[1] - state[2];
         const ez = (goal[2] + L) - state[4];
 
-        let F_x = this.pidX.step(ex, dt);
-        let F_y = this.pidY.step(ey, dt);
-        let F_z = this.pidZ.step(ez, dt);
+        let F_x = this.pidX.step(ex, state[0], dt);
+        let F_y = this.pidY.step(ey, state[2], dt);
+        let F_z = this.pidZ.step(ez, state[4], dt);
 
         F_z += (m_d + m_w) * g;
 
