@@ -183,12 +183,25 @@ export function createScene(canvas) {
     const lqrLabel = makeLabel('LQR', '#4499ff');
     const pidLabel = makeLabel('PID', '#ff8800');
 
-    // Handle resize
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
+    // Shift camera view so drones are centered in the space above the controls panel
+    function updateViewOffset() {
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        const panel = document.getElementById('controls');
+        const ph = panel ? panel.getBoundingClientRect().height + 10 : 0;
+        camera.aspect = W / H;
+        if (ph > 20) {
+            camera.setViewOffset(W, H + ph, 0, ph, W, H);
+        } else {
+            camera.clearViewOffset();
+        }
         camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+        renderer.setSize(W, H);
+    }
+
+    // Handle resize
+    updateViewOffset();
+    window.addEventListener('resize', updateViewOffset);
 
     // Animation loop — callback receives wall-clock delta in seconds
     let onAnimate = null;
