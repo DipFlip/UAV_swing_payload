@@ -10,7 +10,7 @@ const TILT_SMOOTH = 0.15; // per-update blend factor for rotation smoothing
 const lerp = (a, b, t) => a + (b - a) * t;
 
 function updateDroneSystem(system, dronePos, weightPos, control) {
-    const { droneGroup, rope, weight, arrowHelper } = system;
+    const { droneGroup, rope, weight, forceArrow } = system;
 
     const dp = physicsToThree(dronePos.x, dronePos.y, dronePos.z);
     droneGroup.position.set(dp.x, dp.y, dp.z);
@@ -23,19 +23,26 @@ function updateDroneSystem(system, dronePos, weightPos, control) {
         droneGroup.rotation.x = lerp(droneGroup.rotation.x, targetX, TILT_SMOOTH);
         droneGroup.rotation.z = lerp(droneGroup.rotation.z, targetZ, TILT_SMOOTH);
 
-        // Update force arrow: show net applied force in Three.js coords
+        // Update force arrow (cylinder shaft + cone head)
         // Physics (Fx, Fy, Fz) → Three.js (Fx, Fz, Fy)
         const fDir = new THREE.Vector3(control.Fx, control.Fz, control.Fy);
         const fLen = fDir.length();
         if (fLen > 0.1) {
+            const len = Math.min(fLen / 20, 3);
+            const headLen = 0.5;
+            const shaftLen = Math.max(len - headLen, 0.1);
             fDir.divideScalar(fLen);
-            arrowHelper.setDirection(fDir);
-            arrowHelper.setLength(Math.min(fLen / 20, 3), 0.5, 0.25);
-            arrowHelper.visible = true;
+
+            forceArrow.group.position.set(dp.x, dp.y, dp.z);
+            forceArrow.group.quaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0), fDir
+            );
+            forceArrow.shaft.scale.set(1, shaftLen, 1);
+            forceArrow.head.position.set(0, shaftLen, 0);
+            forceArrow.group.visible = true;
         } else {
-            arrowHelper.visible = false;
+            forceArrow.group.visible = false;
         }
-        arrowHelper.position.set(dp.x, dp.y, dp.z);
     }
 
     const wp = physicsToThree(weightPos.x, weightPos.y, weightPos.z);

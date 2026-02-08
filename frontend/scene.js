@@ -44,10 +44,21 @@ function createDroneSystem(scene, bodyColor, weightColor, ropeColor, propColor) 
     group.position.set(0, 4, 0);
     scene.add(group);
 
-    // Force arrow (shows applied acceleration direction)
-    const arrowDir = new THREE.Vector3(0, 1, 0);
-    const arrowHelper = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(), 1, 0xff4444, 0.5, 0.25);
-    scene.add(arrowHelper);
+    // Force arrow (cylinder shaft + cone head for visible thickness)
+    const arrowGroup = new THREE.Group();
+    const shaftGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 8);
+    shaftGeo.translate(0, 0.5, 0); // pivot at base
+    const shaftMat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
+    const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+    arrowGroup.add(shaft);
+    const headGeo = new THREE.ConeGeometry(0.2, 0.5, 8);
+    headGeo.translate(0, 0.25, 0); // pivot at base of cone
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
+    const head = new THREE.Mesh(headGeo, headMat);
+    arrowGroup.add(head);
+    arrowGroup.visible = false;
+    scene.add(arrowGroup);
+    const forceArrow = { group: arrowGroup, shaft, head };
 
     // Rope (cylinder mesh for visible thickness)
     const ropeGeo = new THREE.CylinderGeometry(0.03, 0.03, 1, 6);
@@ -62,7 +73,7 @@ function createDroneSystem(scene, bodyColor, weightColor, ropeColor, propColor) 
     weight.castShadow = true;
     scene.add(weight);
 
-    return { droneGroup: group, rope, weight, arrowHelper };
+    return { droneGroup: group, rope, weight, forceArrow };
 }
 
 export function createScene(canvas) {
