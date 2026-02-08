@@ -207,8 +207,8 @@ const DEFAULT_PARAMS = {
     m_w: 5.0,          // weight mass (kg)
     L: 4.0,            // rope length (m)
     g: 9.81,           // gravity (m/s^2)
-    maxLateral: 32,    // max lateral force per axis (N)
-    maxThrust: 80,     // max vertical thrust (N)
+    maxLateral: 50,    // max lateral force per axis (N)
+    maxThrust: 125,    // max vertical thrust (N)
 };
 
 function solve2x2(a11, a12, a21, a22, b1, b2) {
@@ -284,8 +284,8 @@ function computeLqrGains(params, Qlat, Rlat, Qvert, Rvert) {
     ]);
     const B_lat = matFromArray(4, 1, [0, 1 / m_d, 0, -1 / (m_d * L)]);
 
-    if (!Qlat) Qlat = matFromArray(4, 4, [16, 0, 0, 0, 0, 4, 0, 0, 0, 0, 20, 0, 0, 0, 0, 5]);
-    if (!Rlat) Rlat = matFromArray(1, 1, [0.3]);
+    if (!Qlat) Qlat = matFromArray(4, 4, [40, 0, 0, 0, 0, 10, 0, 0, 0, 0, 50, 0, 0, 0, 0, 12]);
+    if (!Rlat) Rlat = matFromArray(1, 1, [0.15]);
 
     const P_lat = solveCARE(A_lat, B_lat, Qlat, Rlat, 4);
     // K = R^{-1} B^T P
@@ -295,8 +295,8 @@ function computeLqrGains(params, Qlat, Rlat, Qvert, Rvert) {
     const A_vert = matFromArray(2, 2, [0, 1, 0, 0]);
     const B_vert = matFromArray(2, 1, [0, 1 / (m_d + m_w)]);
 
-    if (!Qvert) Qvert = matFromArray(2, 2, [60, 0, 0, 20]);
-    if (!Rvert) Rvert = matFromArray(1, 1, [0.3]);
+    if (!Qvert) Qvert = matFromArray(2, 2, [120, 0, 0, 40]);
+    if (!Rvert) Rvert = matFromArray(1, 1, [0.15]);
 
     const P_vert = solveCARE(A_vert, B_vert, Qvert, Rvert, 2);
     const K_vert = matMul(matMul(matInverse(Rvert), matTranspose(B_vert)), P_vert);
@@ -367,9 +367,9 @@ class PIDAxis {
 class PIDController {
     constructor(params) {
         this.params = params;
-        this.pidX = new PIDAxis(8, 1.5, 10);
-        this.pidY = new PIDAxis(8, 1.5, 10);
-        this.pidZ = new PIDAxis(20, 4, 15);
+        this.pidX = new PIDAxis(14, 2, 16);
+        this.pidY = new PIDAxis(14, 2, 16);
+        this.pidZ = new PIDAxis(30, 6, 20);
     }
 
     computeControl(state, goal, dt) {
@@ -473,31 +473,36 @@ export class Simulation {
     setAggression(aggr) {
         aggr = Math.max(0.05, Math.min(1.0, aggr));
 
+        // Quadratic scaling: gentle at low aggression, much stronger at high
+        const qScale = aggr * aggr;
+        const rScale = 1 / (aggr * aggr);
+
         // Re-compute LQR gains with scaled Q/R
         const Qlat = matFromArray(4, 4, [
-            16 * aggr, 0, 0, 0,
-            0, 4 * aggr, 0, 0,
-            0, 0, 20 * aggr, 0,
-            0, 0, 0, 5 * aggr,
+            40 * qScale, 0, 0, 0,
+            0, 10 * qScale, 0, 0,
+            0, 0, 50 * qScale, 0,
+            0, 0, 0, 12 * qScale,
         ]);
-        const Rlat = matFromArray(1, 1, [0.3 / aggr]);
-        const Qvert = matFromArray(2, 2, [60 * aggr, 0, 0, 20 * aggr]);
-        const Rvert = matFromArray(1, 1, [0.3 / aggr]);
+        const Rlat = matFromArray(1, 1, [0.15 * rScale]);
+        const Qvert = matFromArray(2, 2, [120 * qScale, 0, 0, 40 * qScale]);
+        const Rvert = matFromArray(1, 1, [0.15 * rScale]);
 
         const { K_lat, K_vert } = computeLqrGains(this.params, Qlat, Rlat, Qvert, Rvert);
         this.K_lat = K_lat;
         this.K_vert = K_vert;
 
-        // Scale PID gains
-        this.pid.pidX.kp = 8.0 * aggr;
-        this.pid.pidX.ki = 1.5 * aggr;
-        this.pid.pidX.kd = 10.0 * aggr;
-        this.pid.pidY.kp = 8.0 * aggr;
-        this.pid.pidY.ki = 1.5 * aggr;
-        this.pid.pidY.kd = 10.0 * aggr;
-        this.pid.pidZ.kp = 20.0 * aggr;
-        this.pid.pidZ.ki = 4.0 * aggr;
-        this.pid.pidZ.kd = 15.0 * aggr;
+        // Scale PID gains (quadratic for snappier high-end)
+        const pScale = aggr * (0.5 + 0.5 * aggr); // softer curve for PID stability
+        this.pid.pidX.kp = 14.0 * pScale;
+        this.pid.pidX.ki = 2.0 * pScale;
+        this.pid.pidX.kd = 16.0 * pScale;
+        this.pid.pidY.kp = 14.0 * pScale;
+        this.pid.pidY.ki = 2.0 * pScale;
+        this.pid.pidY.kd = 16.0 * pScale;
+        this.pid.pidZ.kp = 30.0 * pScale;
+        this.pid.pidZ.ki = 6.0 * pScale;
+        this.pid.pidZ.kd = 20.0 * pScale;
     }
 
     setParams(updates) {
