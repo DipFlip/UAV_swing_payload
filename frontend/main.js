@@ -3,7 +3,7 @@
  */
 
 import { createScene } from './scene.js';
-import { updateScene, updateHUD } from './simulation.js';
+import { updateScene, updateHUD, clearTrails } from './simulation.js';
 import { ChartPanel } from './charts.js';
 import { Simulation } from './sim-engine.js';
 
@@ -192,6 +192,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
     stopPattern();
     simLqr.reset();
     simPid.reset();
+    clearTrails(sceneObjects.trails);
     sliderX.value = 0; xVal.textContent = '0.0';
     sliderY.value = 0; yVal.textContent = '0.0';
     sliderZ.value = 0; zVal.textContent = '0.0';

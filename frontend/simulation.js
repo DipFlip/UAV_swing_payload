@@ -32,8 +32,34 @@ function updateDroneSystem(system, dronePos, weightPos, control) {
     return { dronePos: dp, weightPos: wp };
 }
 
+function pushTrailPoint(trail, x, y, z) {
+    const attr = trail.line.geometry.attributes.position;
+    const arr = attr.array;
+    // Shift all points forward (drop oldest) when full
+    if (trail.count >= trail.maxPoints) {
+        arr.copyWithin(0, 3);
+        const i = (trail.maxPoints - 1) * 3;
+        arr[i] = x; arr[i + 1] = y; arr[i + 2] = z;
+    } else {
+        const i = trail.count * 3;
+        arr[i] = x; arr[i + 1] = y; arr[i + 2] = z;
+        trail.count++;
+    }
+    attr.needsUpdate = true;
+    trail.line.geometry.setDrawRange(0, trail.count);
+}
+
+export function clearTrails(trails) {
+    for (const key in trails) {
+        const t = trails[key];
+        t.head = 0;
+        t.count = 0;
+        t.line.geometry.setDrawRange(0, 0);
+    }
+}
+
 export function updateScene(sceneObjects, data) {
-    const { lqr, pid, goalMarker, lqrLabel, pidLabel } = sceneObjects;
+    const { lqr, pid, goalMarker, lqrLabel, pidLabel, trails } = sceneObjects;
 
     const lqrP = updateDroneSystem(lqr, data.lqr.drone, data.lqr.weight, data.lqr.control);
     const pidP = updateDroneSystem(pid, data.pid.drone, data.pid.weight, data.pid.control);
@@ -43,6 +69,13 @@ export function updateScene(sceneObjects, data) {
 
     lqrLabel.position.set(lqrP.dronePos.x, lqrP.dronePos.y + 0.8, lqrP.dronePos.z);
     pidLabel.position.set(pidP.dronePos.x, pidP.dronePos.y + 0.8, pidP.dronePos.z);
+
+    // Push trail points
+    pushTrailPoint(trails.lqrDrone, lqrP.dronePos.x, lqrP.dronePos.y, lqrP.dronePos.z);
+    pushTrailPoint(trails.lqrWeight, lqrP.weightPos.x, lqrP.weightPos.y, lqrP.weightPos.z);
+    pushTrailPoint(trails.pidDrone, pidP.dronePos.x, pidP.dronePos.y, pidP.dronePos.z);
+    pushTrailPoint(trails.pidWeight, pidP.weightPos.x, pidP.weightPos.y, pidP.weightPos.z);
+    pushTrailPoint(trails.goal, gp.x, gp.y, gp.z);
 }
 
 export function updateHUD(data) {

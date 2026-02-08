@@ -96,8 +96,9 @@ export function createScene(canvas) {
     dirLight.castShadow = true;
     scene.add(dirLight);
 
-    // Ground grid
-    const gridHelper = new THREE.GridHelper(40, 40, 0xaaaaaa, 0x999999);
+    // Ground grid (raised slightly to avoid z-fighting with ground plane)
+    const gridHelper = new THREE.GridHelper(40, 20, 0xaaaaaa, 0x999999);
+    gridHelper.position.y = 0.01;
     scene.add(gridHelper);
 
     // Ground plane
@@ -125,6 +126,27 @@ export function createScene(canvas) {
     const goalMarker = new THREE.Mesh(goalGeo, goalMat);
     goalMarker.position.set(0, 0, 0);
     scene.add(goalMarker);
+
+    // --- Trails ---
+    function createTrail(color, maxPoints) {
+        const positions = new Float32Array(maxPoints * 3);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setDrawRange(0, 0);
+        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 });
+        const line = new THREE.Line(geo, mat);
+        scene.add(line);
+        return { line, head: 0, count: 0, maxPoints };
+    }
+
+    const TRAIL_MAX = 200; // enough points for ~2s of trail at sim rate
+    const trails = {
+        lqrDrone:  createTrail(0x4499ff, TRAIL_MAX),
+        lqrWeight: createTrail(0xff3333, TRAIL_MAX),
+        pidDrone:  createTrail(0xff8800, TRAIL_MAX),
+        pidWeight: createTrail(0xffcc00, TRAIL_MAX),
+        goal:      createTrail(0x00ff88, TRAIL_MAX),
+    };
 
     // --- Labels (floating text sprites) ---
     function makeLabel(text, color) {
@@ -174,6 +196,7 @@ export function createScene(canvas) {
         lqr, pid,
         goalMarker,
         lqrLabel, pidLabel,
+        trails,
         setOnAnimate(fn) { onAnimate = fn; },
     };
 }
