@@ -244,3 +244,12 @@ body {
 #btn-reset:hover {
     background: #dd3333;
 }
+
+#btn-pause {
+    background: #aaaaaa;
+    color: #000;
+}
+
+#btn-pause:hover {
+    background: #999999;
+}

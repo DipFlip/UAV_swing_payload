@@ -54,8 +54,18 @@ const sliderTimescale = document.getElementById('slider-timescale');
 const timescaleVal = document.getElementById('timescale-val');
 sliderTimescale.addEventListener('input', () => { timescaleVal.textContent = sliderTimescale.value; });
 
+// --- Pause button ---
+let paused = false;
+const btnPause = document.getElementById('btn-pause');
+btnPause.addEventListener('click', () => {
+    paused = !paused;
+    btnPause.textContent = paused ? 'Play' : 'Pause';
+    btnPause.style.background = paused ? '#44bb44' : '#aaaaaa';
+});
+
 // --- Simulation loop via render callback ---
 sceneObjects.setOnAnimate((wallDt) => {
+    if (paused) return;
     // Clamp to 100ms to handle tab backgrounding
     const dt = Math.min(wallDt, 0.1);
     const timeScale = parseFloat(sliderTimescale.value) / 100;
