@@ -30,7 +30,7 @@ function updateDroneSystem(system, dronePos, weightPos, control) {
         if (fLen > 0.1) {
             fDir.divideScalar(fLen);
             arrowHelper.setDirection(fDir);
-            arrowHelper.setLength(Math.min(fLen / 20, 3), 0.3, 0.15);
+            arrowHelper.setLength(Math.min(fLen / 20, 3), 0.5, 0.25);
             arrowHelper.visible = true;
         } else {
             arrowHelper.visible = false;
@@ -41,10 +41,19 @@ function updateDroneSystem(system, dronePos, weightPos, control) {
     const wp = physicsToThree(weightPos.x, weightPos.y, weightPos.z);
     weight.position.set(wp.x, wp.y, wp.z);
 
-    const positions = rope.geometry.attributes.position;
-    positions.setXYZ(0, dp.x, dp.y, dp.z);
-    positions.setXYZ(1, wp.x, wp.y, wp.z);
-    positions.needsUpdate = true;
+    // Position rope cylinder between drone and weight
+    const mid = new THREE.Vector3(
+        (dp.x + wp.x) / 2, (dp.y + wp.y) / 2, (dp.z + wp.z) / 2
+    );
+    rope.position.copy(mid);
+    const dir = new THREE.Vector3(wp.x - dp.x, wp.y - dp.y, wp.z - dp.z);
+    const len = dir.length();
+    rope.scale.set(1, len, 1);
+    if (len > 0.001) {
+        rope.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0), dir.divideScalar(len)
+        );
+    }
 
     return { dronePos: dp, weightPos: wp };
 }

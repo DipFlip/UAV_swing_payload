@@ -174,13 +174,20 @@ body {
     height: 6px;
     -webkit-appearance: none;
     appearance: none;
-    background: #333;
+    background: linear-gradient(to right, #005577, #00aadd);
     border-radius: 3px;
     outline: none;
     padding: 12px 0;
     margin: 0;
     background-clip: content-box;
     cursor: pointer;
+}
+
+.slider-group input[type="range"]::-moz-range-track {
+    height: 6px;
+    background: linear-gradient(to right, #005577, #00aadd);
+    border-radius: 3px;
+    border: none;
 }
 
 .slider-group input[type="range"]::-webkit-slider-thumb {

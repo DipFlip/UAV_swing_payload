@@ -124,19 +124,23 @@ const sliderMd = document.getElementById('slider-md');
 const mdVal = document.getElementById('md-val');
 const sliderMw = document.getElementById('slider-mw');
 const mwVal = document.getElementById('mw-val');
+const sliderRope = document.getElementById('slider-rope');
+const ropeVal = document.getElementById('rope-val');
 const sliderFmax = document.getElementById('slider-fmax');
 const fmaxVal = document.getElementById('fmax-val');
 
 function sendParams() {
     const m_d = parseFloat(sliderMd.value);
     const m_w = parseFloat(sliderMw.value);
+    const L = parseFloat(sliderRope.value);
     const maxLateral = parseFloat(sliderFmax.value);
     const maxThrust = maxLateral * 2.5; // keep thrust proportional
-    simLqr.setParams({ m_d, m_w, maxLateral, maxThrust });
-    simPid.setParams({ m_d, m_w, maxLateral, maxThrust });
+    simLqr.setParams({ m_d, m_w, L, maxLateral, maxThrust });
+    simPid.setParams({ m_d, m_w, L, maxLateral, maxThrust });
 }
 
 sliderMd.addEventListener('input', () => { mdVal.textContent = sliderMd.value; sendParams(); });
+sliderRope.addEventListener('input', () => { ropeVal.textContent = sliderRope.value; sendParams(); });
 sliderMw.addEventListener('input', () => { mwVal.textContent = sliderMw.value; sendParams(); });
 sliderFmax.addEventListener('input', () => { fmaxVal.textContent = sliderFmax.value; sendParams(); });
 

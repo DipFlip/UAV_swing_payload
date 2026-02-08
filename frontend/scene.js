@@ -46,16 +46,13 @@ function createDroneSystem(scene, bodyColor, weightColor, ropeColor, propColor) 
 
     // Force arrow (shows applied acceleration direction)
     const arrowDir = new THREE.Vector3(0, 1, 0);
-    const arrowHelper = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(), 1, 0xff4444, 0.3, 0.15);
+    const arrowHelper = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(), 1, 0xff4444, 0.5, 0.25);
     scene.add(arrowHelper);
 
-    // Rope
-    const ropeMat = new THREE.LineBasicMaterial({ color: ropeColor, linewidth: 2 });
-    const ropeGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 4, 0),
-        new THREE.Vector3(0, 0, 0),
-    ]);
-    const rope = new THREE.Line(ropeGeo, ropeMat);
+    // Rope (cylinder mesh for visible thickness)
+    const ropeGeo = new THREE.CylinderGeometry(0.03, 0.03, 1, 6);
+    const ropeMat = new THREE.MeshStandardMaterial({ color: ropeColor });
+    const rope = new THREE.Mesh(ropeGeo, ropeMat);
     scene.add(rope);
 
     // Weight
