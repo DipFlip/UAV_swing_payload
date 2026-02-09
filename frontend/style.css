@@ -266,3 +266,57 @@ body {
 #btn-pause:hover {
     background: #999999;
 }
+
+/* Algorithm submenu */
+h3.collapsible {
+    cursor: pointer;
+    user-select: none;
+}
+
+h3.collapsible:hover {
+    color: #00eeff;
+}
+
+.algo-section {
+    overflow: hidden;
+    transition: max-height 0.2s ease;
+    max-height: 120px;
+}
+
+.algo-section.collapsed {
+    max-height: 0;
+}
+
+.algo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+.algo-row label:first-child {
+    width: 110px;
+    flex-shrink: 0;
+}
+
+.algo-row select {
+    background: #333;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.cb-label {
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.cb-label input[type="checkbox"] {
+    margin-right: 3px;
+    cursor: pointer;
+}

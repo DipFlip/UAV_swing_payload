@@ -191,6 +191,20 @@ export function createScene(canvas) {
     const lqrLabel = makeLabel('LQR', '#4499ff');
     const pidLabel = makeLabel('PID', '#ff8800');
 
+    function updateLabelText(sprite, text, color) {
+        const canvas2d = document.createElement('canvas');
+        canvas2d.width = 256;
+        canvas2d.height = 40;
+        const ctx = canvas2d.getContext('2d');
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillStyle = color;
+        ctx.textAlign = 'center';
+        ctx.fillText(text, 128, 28);
+        if (sprite.material.map) sprite.material.map.dispose();
+        sprite.material.map = new THREE.CanvasTexture(canvas2d);
+        sprite.material.needsUpdate = true;
+    }
+
     // Shift camera view so drones are centered in the space above the controls panel
     function updateViewOffset() {
         const W = window.innerWidth;
@@ -230,6 +244,7 @@ export function createScene(canvas) {
         lqr, pid,
         goalMarker,
         lqrLabel, pidLabel,
+        updateLabelText,
         trails,
         setOnAnimate(fn) { onAnimate = fn; },
     };

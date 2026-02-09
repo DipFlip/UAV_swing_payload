@@ -399,6 +399,195 @@ class PIDController {
     }
 }
 
+// ─── Cascade PD Controller ──────────────────────────────────────────────────
+// Outer loop: PD on payload position → desired drone offset
+// Inner loop: PD on drone position → force command
+
+class CascadePDController {
+    constructor(params) {
+        this.params = params;
+        // Outer loop gains (payload position → drone offset)
+        this.kp_outer = 1.8;
+        this.kd_outer = 1.2;
+        // Inner loop gains (drone position → force)
+        this.kp_inner = 30;
+        this.kd_inner = 20;
+        // Vertical
+        this.kp_z = 50;
+        this.kd_z = 30;
+        this.prevPayloadX = null;
+        this.prevPayloadY = null;
+    }
+
+    computeControl(state, goal, dt) {
+        const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
+
+        // Current payload position
+        const w = weightPosition(state, L);
+        const goalDroneZ = goal[2] + L;
+
+        // Payload velocity estimate (derivative on measurement)
+        let wdx = 0, wdy = 0;
+        if (this.prevPayloadX !== null && dt > 0) {
+            wdx = (w.x - this.prevPayloadX) / dt;
+            wdy = (w.y - this.prevPayloadY) / dt;
+        }
+        this.prevPayloadX = w.x;
+        this.prevPayloadY = w.y;
+
+        // Outer loop: desired drone position based on payload error
+        const payload_ex = goal[0] - w.x;
+        const payload_ey = goal[1] - w.y;
+        const drone_x_des = w.x + this.kp_outer * payload_ex + this.kd_outer * (-wdx);
+        const drone_y_des = w.y + this.kp_outer * payload_ey + this.kd_outer * (-wdy);
+
+        // Inner loop: force from drone position error
+        const drone_ex = drone_x_des - state[0];
+        const drone_ey = drone_y_des - state[2];
+        let F_x = this.kp_inner * drone_ex - this.kd_inner * state[1];
+        let F_y = this.kp_inner * drone_ey - this.kd_inner * state[3];
+
+        // Vertical (simple PD, same as PID)
+        const ez = goalDroneZ - state[4];
+        let F_z = this.kp_z * ez - this.kd_z * state[5] + (m_d + m_w) * g;
+
+        F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
+        F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
+        F_z = Math.max(0, Math.min(maxThrust, F_z));
+
+        return [F_x, F_y, F_z];
+    }
+
+    setAggression(aggr) {
+        const s = aggr * (0.5 + 0.5 * aggr);
+        this.kp_outer = 1.8 * s;
+        this.kd_outer = 1.2 * s;
+        this.kp_inner = 30 * s;
+        this.kd_inner = 20 * s;
+        this.kp_z = 50 * s;
+        this.kd_z = 30 * s;
+    }
+
+    reset() {
+        this.prevPayloadX = null;
+        this.prevPayloadY = null;
+    }
+}
+
+// ─── Differential Flatness + Feedforward Controller ─────────────────────────
+// Smooths goal through a 2nd-order reference filter, computes feedforward
+// drone position from flatness inversion, adds full-state feedback.
+
+class RefTrajectory {
+    constructor(pos0) {
+        this.pos = pos0;
+        this.vel = 0;
+    }
+
+    update(goal, omega, dt) {
+        const acc = omega * omega * (goal - this.pos) - 2.0 * omega * this.vel;
+        this.vel += acc * dt;
+        this.pos += this.vel * dt;
+        return { pos: this.pos, vel: this.vel, acc };
+    }
+
+    reset(pos) {
+        this.pos = pos;
+        this.vel = 0;
+    }
+}
+
+class FlatnessController {
+    constructor(params) {
+        this.params = params;
+        this.omega = 2.0;
+        // Reference trajectories for payload position
+        this.trajX = new RefTrajectory(0);
+        this.trajY = new RefTrajectory(0);
+        this.trajZ = new RefTrajectory(params.L);
+        // Feedback gains
+        this.kp = 25;
+        this.kd = 15;
+        this.kp_phi = 40;
+        this.kd_phi = 15;
+        this.kp_z = 50;
+        this.kd_z = 30;
+    }
+
+    computeControl(state, goal, dt) {
+        const { L, g, m_d, m_w, maxLateral, maxThrust } = this.params;
+
+        // Generate smooth payload reference
+        const xRef = this.trajX.update(goal[0], this.omega, dt);
+        const yRef = this.trajY.update(goal[1], this.omega, dt);
+        const zRef = this.trajZ.update(goal[2] + L, this.omega, dt);
+
+        // Flatness inversion (linearized):
+        // desired drone position = payload_ref + (L/g) * payload_accel
+        const x_d_des = xRef.pos + (L / g) * xRef.acc;
+        const y_d_des = yRef.pos + (L / g) * yRef.acc;
+
+        // Desired pendulum angle from flatness: phi = -x_w_ddot / g
+        const phi_x_des = -xRef.acc / g;
+        const phi_y_des = -yRef.acc / g;
+
+        // Feedforward force: F = (m_d + m_w) * x_w_ddot
+        const Fx_ff = (m_d + m_w) * xRef.acc;
+        const Fy_ff = (m_d + m_w) * yRef.acc;
+
+        // Feedback: PD on drone position + PD on pendulum angle
+        let F_x = Fx_ff
+            + this.kp * (x_d_des - state[0]) - this.kd * state[1]
+            - this.kp_phi * (state[6] - phi_x_des) - this.kd_phi * state[7];
+
+        let F_y = Fy_ff
+            + this.kp * (y_d_des - state[2]) - this.kd * state[3]
+            - this.kp_phi * (state[8] - phi_y_des) - this.kd_phi * state[9];
+
+        // Vertical (no pendulum coupling)
+        let F_z = (m_d + m_w) * g
+            + this.kp_z * (zRef.pos - state[4]) - this.kd_z * state[5];
+
+        F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
+        F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
+        F_z = Math.max(0, Math.min(maxThrust, F_z));
+
+        return [F_x, F_y, F_z];
+    }
+
+    setAggression(aggr) {
+        const s = aggr * (0.5 + 0.5 * aggr);
+        this.omega = 1.0 + 2.0 * aggr;
+        this.kp = 25 * s;
+        this.kd = 15 * s;
+        this.kp_phi = 40 * s;
+        this.kd_phi = 15 * s;
+        this.kp_z = 50 * s;
+        this.kd_z = 30 * s;
+    }
+
+    reset(params) {
+        this.trajX.reset(0);
+        this.trajY.reset(0);
+        this.trajZ.reset(params.L);
+    }
+}
+
+// ─── Energy-Based Swing Damping (layerable on any controller) ───────────────
+// Adds force proportional to phi_dot to dissipate pendulum energy.
+// F_damp = k_e * phi_dot (same direction as angular velocity → damps swing)
+
+function applySwingDamping(control, state, params, gain) {
+    const k_e = gain || (params.m_d + params.m_w) * Math.sqrt(params.g * params.L) * 0.3;
+    const ml = params.maxLateral;
+    let [F_x, F_y, F_z] = control;
+    F_x += k_e * state[7]; // phi_x_dot
+    F_y += k_e * state[9]; // phi_y_dot
+    F_x = Math.max(-ml, Math.min(ml, F_x));
+    F_y = Math.max(-ml, Math.min(ml, F_y));
+    return [F_x, F_y, F_z];
+}
+
 // ─── Simulation ──────────────────────────────────────────────────────────────
 
 export class Simulation {
@@ -407,6 +596,7 @@ export class Simulation {
         this.dt = 0.02;
         this.time = 0;
         this.controllerType = controllerType;
+        this.swingDamping = false;
 
         // Initial state: drone at z = L, everything else zero
         this.state = new Array(10).fill(0);
@@ -422,15 +612,35 @@ export class Simulation {
 
         // PID controller
         this.pid = new PIDController(this.params);
+
+        // Cascade PD controller
+        this.cascade = new CascadePDController(this.params);
+
+        // Flatness controller
+        this.flatness = new FlatnessController(this.params);
     }
 
     step() {
         let control;
-        if (this.controllerType === 'pid') {
-            control = this.pid.computeControl(this.state, this.goal, this.dt);
-        } else {
-            control = computeLqrControl(this.state, this.goal, this.K_lat, this.K_vert, this.params);
+        switch (this.controllerType) {
+            case 'pid':
+                control = this.pid.computeControl(this.state, this.goal, this.dt);
+                break;
+            case 'cascade':
+                control = this.cascade.computeControl(this.state, this.goal, this.dt);
+                break;
+            case 'flatness':
+                control = this.flatness.computeControl(this.state, this.goal, this.dt);
+                break;
+            default: // 'lqr'
+                control = computeLqrControl(this.state, this.goal, this.K_lat, this.K_vert, this.params);
+                break;
         }
+
+        if (this.swingDamping) {
+            control = applySwingDamping(control, this.state, this.params);
+        }
+
         this.lastControl = control;
 
         this.state = rk4Step(this.state, control, this.params, this.dt);
@@ -470,6 +680,14 @@ export class Simulation {
         this.goal = [x, y, z];
     }
 
+    setControllerType(type) {
+        this.controllerType = type;
+    }
+
+    setSwingDamping(enabled) {
+        this.swingDamping = enabled;
+    }
+
     setAggression(aggr) {
         aggr = Math.max(0.05, Math.min(1.0, aggr));
 
@@ -503,11 +721,19 @@ export class Simulation {
         this.pid.pidZ.kp = 50.0 * pScale;
         this.pid.pidZ.ki = 10.0 * pScale;
         this.pid.pidZ.kd = 30.0 * pScale;
+
+        // Scale cascade PD
+        this.cascade.setAggression(aggr);
+
+        // Scale flatness controller
+        this.flatness.setAggression(aggr);
     }
 
     setParams(updates) {
         Object.assign(this.params, updates);
         this.pid.params = this.params;
+        this.cascade.params = this.params;
+        this.flatness.params = this.params;
         // Recompute LQR gains for new params
         const { K_lat, K_vert } = computeLqrGains(this.params);
         this.K_lat = K_lat;
@@ -521,5 +747,7 @@ export class Simulation {
         this.time = 0;
         this.lastControl = [0, 0, (this.params.m_d + this.params.m_w) * this.params.g];
         this.pid.reset();
+        this.cascade.reset();
+        this.flatness.reset(this.params);
     }
 }

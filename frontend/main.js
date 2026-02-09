@@ -3,7 +3,7 @@
  */
 
 import { createScene } from './scene.js';
-import { updateScene, updateHUD, clearTrails } from './simulation.js';
+import { updateScene, updateHUD, setHUDLabels, clearTrails } from './simulation.js';
 import { ChartPanel } from './charts.js';
 import { Simulation } from './sim-engine.js';
 
@@ -12,11 +12,14 @@ const sceneObjects = createScene(canvas);
 const chartPanel = new ChartPanel(document.getElementById('chart-content'));
 let prevData = null;
 
-// --- Simulations ---
+// --- Simulations (simA = blue drone, simB = orange drone) ---
 const simLqr = new Simulation('lqr');
 const simPid = new Simulation('pid');
 simLqr.setGoal(0, 0, 1);
 simPid.setGoal(0, 0, 1);
+
+// --- Algorithm name mapping for labels ---
+const ALGO_LABELS = { lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF' };
 
 const SIM_DT = 0.02;  // fixed sim timestep
 let simAccum = 0;      // fractional sim-time accumulator
@@ -150,6 +153,53 @@ sliderFmax.addEventListener('input', () => { fmaxVal.textContent = sliderFmax.va
 const statusEl = document.getElementById('hud-status');
 statusEl.textContent = 'Status: Running locally';
 statusEl.style.color = '#00ff88';
+
+// --- Algorithm submenu toggle ---
+const algoHeader = document.getElementById('algo-header');
+const algoContent = document.getElementById('algo-content');
+const algoArrow = document.getElementById('algo-arrow');
+
+algoHeader.addEventListener('click', () => {
+    const collapsed = algoContent.classList.toggle('collapsed');
+    algoArrow.innerHTML = collapsed ? '&#x25B6;' : '&#x25BC;';
+});
+
+// --- Algorithm dropdowns & swing damping checkboxes ---
+const algoA = document.getElementById('algo-a');
+const algoB = document.getElementById('algo-b');
+const swingA = document.getElementById('swing-a');
+const swingB = document.getElementById('swing-b');
+
+function getAlgoLabel(selectEl, swingEl) {
+    const algoName = ALGO_LABELS[selectEl.value] || selectEl.value;
+    return algoName + (swingEl.checked ? '+SD' : '');
+}
+
+function syncAlgoLabels() {
+    const labelA = getAlgoLabel(algoA, swingA);
+    const labelB = getAlgoLabel(algoB, swingB);
+    sceneObjects.updateLabelText(sceneObjects.lqrLabel, labelA, '#4499ff');
+    sceneObjects.updateLabelText(sceneObjects.pidLabel, labelB, '#ff8800');
+    setHUDLabels(labelA, labelB);
+    chartPanel.setLabels(labelA, labelB);
+}
+
+algoA.addEventListener('change', () => {
+    simLqr.setControllerType(algoA.value);
+    syncAlgoLabels();
+});
+algoB.addEventListener('change', () => {
+    simPid.setControllerType(algoB.value);
+    syncAlgoLabels();
+});
+swingA.addEventListener('change', () => {
+    simLqr.setSwingDamping(swingA.checked);
+    syncAlgoLabels();
+});
+swingB.addEventListener('change', () => {
+    simPid.setSwingDamping(swingB.checked);
+    syncAlgoLabels();
+});
 
 // --- Pattern animation ---
 const sliderSpeed = document.getElementById('slider-speed');

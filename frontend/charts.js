@@ -151,13 +151,13 @@ export class ChartPanel {
     }
 
     _createCharts() {
-        // 1. Distance to goal — LQR vs PID
+        // 1. Distance to goal
         this.distChart = new RollingChart(
             this._makeCanvas(),
             'Distance to Goal',
             [
-                { label: 'LQR', color: '#4499ff', thick: true },
-                { label: 'PID', color: '#ff8800', thick: true },
+                { label: 'A', color: '#4499ff', thick: true },
+                { label: 'B', color: '#ff8800', thick: true },
             ],
             { unit: 'm', autoRange: true }
         );
@@ -168,17 +168,17 @@ export class ChartPanel {
             this._makeCanvas(),
             'Swing Magnitude',
             [
-                { label: 'LQR', color: '#4499ff', thick: true },
-                { label: 'PID', color: '#ff8800', thick: true },
+                { label: 'A', color: '#4499ff', thick: true },
+                { label: 'B', color: '#ff8800', thick: true },
             ],
             { unit: '\u00B0', autoRange: true }
         );
         this.charts.push(this.swingChart);
 
-        // 3. LQR control forces
+        // 3. Drone A control forces
         this.lqrForceChart = new RollingChart(
             this._makeCanvas(),
-            'LQR Forces',
+            'A Forces',
             [
                 { label: 'Fx', color: '#ff4466' },
                 { label: 'Fy', color: '#44ff66' },
@@ -188,10 +188,10 @@ export class ChartPanel {
         );
         this.charts.push(this.lqrForceChart);
 
-        // 4. PID control forces
+        // 4. Drone B control forces
         this.pidForceChart = new RollingChart(
             this._makeCanvas(),
-            'PID Forces',
+            'B Forces',
             [
                 { label: 'Fx', color: '#ff8844' },
                 { label: 'Fy', color: '#aaff44' },
@@ -206,12 +206,24 @@ export class ChartPanel {
             this._makeCanvas(),
             'Weight Speed',
             [
-                { label: 'LQR', color: '#4499ff', thick: true },
-                { label: 'PID', color: '#ff8800', thick: true },
+                { label: 'A', color: '#4499ff', thick: true },
+                { label: 'B', color: '#ff8800', thick: true },
             ],
             { unit: 'm/s', autoRange: true }
         );
         this.charts.push(this.velChart);
+    }
+
+    setLabels(labelA, labelB) {
+        // Update series labels in comparison charts
+        this.distChart.series[0].label = labelA;
+        this.distChart.series[1].label = labelB;
+        this.swingChart.series[0].label = labelA;
+        this.swingChart.series[1].label = labelB;
+        this.lqrForceChart.title = labelA + ' Forces';
+        this.pidForceChart.title = labelB + ' Forces';
+        this.velChart.series[0].label = labelA;
+        this.velChart.series[1].label = labelB;
     }
 
     _resize() {

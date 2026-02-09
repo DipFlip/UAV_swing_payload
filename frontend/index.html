@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
-    <link rel="stylesheet" href="style.css?v=1.7">
+    <link rel="stylesheet" href="style.css?v=1.8">
 </head>
 <body>
     <div id="container">
@@ -19,7 +19,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v1.7</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v1.8</div>
             </div>
         </div>
 
@@ -72,6 +72,29 @@
                 <label>Pattern spd: <span id="speed-val">1.0</span>x</label>
                 <input type="range" id="slider-speed" min="0.2" max="3.0" step="0.2" value="1.0">
             </div>
+            <h3 class="collapsible" id="algo-header">Algorithm <span id="algo-arrow">&#x25B6;</span></h3>
+            <div id="algo-content" class="algo-section collapsed">
+                <div class="algo-row">
+                    <label>Drone A <span style="color:#4499ff">(blue)</span></label>
+                    <select id="algo-a">
+                        <option value="lqr" selected>LQR</option>
+                        <option value="pid">PID</option>
+                        <option value="cascade">Cascade PD</option>
+                        <option value="flatness">Flatness FF</option>
+                    </select>
+                    <label class="cb-label"><input type="checkbox" id="swing-a"> Anti-swing</label>
+                </div>
+                <div class="algo-row">
+                    <label>Drone B <span style="color:#ff8800">(orange)</span></label>
+                    <select id="algo-b">
+                        <option value="lqr">LQR</option>
+                        <option value="pid" selected>PID</option>
+                        <option value="cascade">Cascade PD</option>
+                        <option value="flatness">Flatness FF</option>
+                    </select>
+                    <label class="cb-label"><input type="checkbox" id="swing-b"> Anti-swing</label>
+                </div>
+            </div>
             <div class="button-group">
                 <button id="btn-pause">Pause</button>
                 <button id="btn-go">Go</button>
@@ -89,6 +112,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=1.7"></script>
+    <script type="module" src="main.js?v=1.8"></script>
 </body>
 </html>
