@@ -65,7 +65,7 @@ function updateDroneSystem(system, dronePos, weightPos, control) {
     return { dronePos: dp, weightPos: wp };
 }
 
-const TRAIL_RADIUS = 0.04;
+const TRAIL_RADIUS = 0.03;
 const _mat4 = new THREE.Matrix4();
 const _start = new THREE.Vector3();
 const _end = new THREE.Vector3();
