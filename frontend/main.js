@@ -15,6 +15,8 @@ let prevData = null;
 // --- Simulations ---
 const simLqr = new Simulation('lqr');
 const simPid = new Simulation('pid');
+simLqr.setGoal(0, 0, 1);
+simPid.setGoal(0, 0, 1);
 
 const SIM_DT = 0.02;  // fixed sim timestep
 let simAccum = 0;      // fractional sim-time accumulator
@@ -181,6 +183,8 @@ function startPattern() {
 
         const dt = (now - lastTime) / 1000;
         lastTime = now;
+
+        if (paused) { patternRaf = requestAnimationFrame(tick); return; }
 
         const speed = parseFloat(sliderSpeed.value) || 1.0;
         const timeScale = parseFloat(sliderTimescale.value) / 100;
