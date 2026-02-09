@@ -5,6 +5,13 @@ Notes on control algorithms for the drone + hanging payload system.
 ## Currently Implemented
 - **LQR** (Linear Quadratic Regulator) — Linearized full-state feedback using all 10 state variables including pendulum angles. Solves CARE for optimal gains.
 - **PID** — 3-axis position control blind to pendulum dynamics. Uses derivative-on-measurement to avoid derivative kick.
+- **Cascade PD** — Two nested PD loops: outer on payload position, inner on drone position.
+- **Flatness FF** — Differential flatness feedforward with reference trajectory filter + PD feedback.
+- **Feedback Linearization** — Cancels nonlinear sin/cos coupling, applies PD on linearized system.
+- **Sliding Mode** — Sliding surface + equivalent control + bounded switching term. Robust to model uncertainty.
+- **MPC** — Finite-horizon LQR via backward discrete Riccati recursion. Gain caching for performance.
+- **Energy-Based Swing Damping** (layerable) — Adds damping force proportional to pendulum angular velocity.
+- **ZVD Input Shaping** (layerable) — Pre-filters goal signal with 3 impulses at pendulum natural frequency for zero residual swing.
 
 ## Reactive Control (no trajectory preview)
 

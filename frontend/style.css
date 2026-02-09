@@ -438,6 +438,7 @@ h3.collapsible:hover {
     gap: 8px;
     margin-bottom: 4px;
     font-size: 12px;
+    flex-wrap: wrap;
 }
 
 .algo-row label:first-child {

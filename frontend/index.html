@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
-    <link rel="stylesheet" href="style.css?v=2.0">
+    <link rel="stylesheet" href="style.css?v=2.5">
 </head>
 <body>
     <div id="container">
@@ -19,7 +19,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v2.4</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v2.5</div>
             </div>
         </div>
 
@@ -81,8 +81,12 @@
                             <option value="pid">PID</option>
                             <option value="cascade">Cascade PD</option>
                             <option value="flatness">Flatness FF</option>
+                            <option value="feedbacklin">Feedback Lin</option>
+                            <option value="sliding">Sliding Mode</option>
+                            <option value="mpc">MPC</option>
                         </select>
                         <label class="cb-label" title="Energy-based swing damping: adds force proportional to pendulum angular velocity to dissipate swing energy. Can be layered on any algorithm."><input type="checkbox" id="swing-a"> Anti-swing</label>
+                        <label class="cb-label" title="ZVD Input Shaping: pre-filters the goal signal with 3 impulses timed at the pendulum natural frequency to eliminate residual swing."><input type="checkbox" id="shaping-a"> Input shaping</label>
                     </div>
                     <div id="params-a" class="algo-params"></div>
                     <button id="reset-a" class="reset-params-btn">Reset to default</button>
@@ -95,8 +99,12 @@
                             <option value="pid" selected>PID</option>
                             <option value="cascade">Cascade PD</option>
                             <option value="flatness">Flatness FF</option>
+                            <option value="feedbacklin">Feedback Lin</option>
+                            <option value="sliding">Sliding Mode</option>
+                            <option value="mpc">MPC</option>
                         </select>
                         <label class="cb-label" title="Energy-based swing damping: adds force proportional to pendulum angular velocity to dissipate swing energy. Can be layered on any algorithm."><input type="checkbox" id="swing-b"> Anti-swing</label>
+                        <label class="cb-label" title="ZVD Input Shaping: pre-filters the goal signal with 3 impulses timed at the pendulum natural frequency to eliminate residual swing."><input type="checkbox" id="shaping-b"> Input shaping</label>
                     </div>
                     <div id="params-b" class="algo-params"></div>
                     <button id="reset-b" class="reset-params-btn">Reset to default</button>
@@ -116,6 +124,10 @@
                 <p><a href="https://en.wikipedia.org/wiki/PID_controller" target="_blank"><strong>PID</strong></a> (Proportional-Integral-Derivative) &mdash; Classic 3-axis position controller that is completely blind to the pendulum dynamics &mdash; it only sees the drone&rsquo;s position error relative to the goal. Uses derivative-on-measurement (differentiates the drone position instead of the error signal) to avoid sudden force spikes when the goal changes. Tunable: <em>Kp</em> (proportional gain &mdash; immediate response to error), <em>Ki</em> (integral gain &mdash; eliminates steady-state offset over time), <em>Kd</em> (derivative gain &mdash; dampens oscillations by opposing velocity).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Cascade_control" target="_blank"><strong>Cascade PD</strong></a> (CPD) &mdash; Two nested <a href="https://en.wikipedia.org/wiki/PD_controller" target="_blank">PD control</a> loops inspired by overhead crane control. The outer loop measures the <em>payload</em> position error and computes a desired drone offset &mdash; if the payload is too far right, it commands the drone further right to &ldquo;pull&rdquo; it back. The inner loop then drives the drone to that desired position. Unlike plain PID, this explicitly tracks the payload rather than just the drone, which naturally reduces swing even without a pendulum model. Tunable: <em>Outer Kp/Kd</em> (payload tracking responsiveness) and <em>Inner Kp/Kd</em> (drone positioning aggressiveness).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Flatness_(systems_theory)" target="_blank"><strong>Flatness FF</strong></a> (Differential Flatness + Feedforward) &mdash; Exploits the mathematical property that the payload position is a <em>flat output</em> of the coupled drone-pendulum system. This means the exact drone trajectory and forces can be computed algebraically from any desired payload trajectory. The controller smooths the goal through a critically-damped 2nd-order reference filter, then inverts the linearized dynamics: desired drone position = payload position + (L/g) &times; payload acceleration, and desired pendulum angle &phi; = &minus;acceleration/g. Combines this feedforward with PD feedback on drone position and pendulum angle for robustness. Tunable: <em>Ref speed</em> (&omega; &mdash; reference filter bandwidth, higher = faster tracking), <em>Pos Kp</em> (position feedback strength), <em>Angle Kp</em> (pendulum angle correction strength).</p>
+                <p><a href="https://en.wikipedia.org/wiki/Feedback_linearization" target="_blank"><strong>Feedback Lin</strong></a> (FBL &mdash; Feedback Linearization) &mdash; Applies a state-dependent nonlinear transformation that cancels the sin/cos coupling between the drone and pendulum, making the system behave like a simple double integrator. Once linearized, a PD controller drives position and angle to zero. The force law is: <code>F = (m<sub>d</sub> + m<sub>w</sub>sin&sup2;&phi;) &middot; v &minus; m<sub>w</sub>L sin&phi; &middot; &phi;&#x307;&sup2; &minus; m<sub>w</sub>g sin&phi; cos&phi;</code>, where <code>v</code> is the PD virtual input. Works well for moderate angles but demands large forces near singularities. Tunable: <em>Pos Kp</em> (position tracking), <em>Angle Ka</em> (pendulum angle suppression), <em>Rate Kb</em> (angular rate damping).</p>
+                <p><a href="https://en.wikipedia.org/wiki/Sliding_mode_control" target="_blank"><strong>Sliding Mode</strong></a> (SMC) &mdash; Defines a sliding surface combining position error, velocity, pendulum angle, and angular rate: <code>s = &lambda;(x &minus; x<sub>des</sub>) + x&#x307; + &alpha;&phi; + &beta;&phi;&#x307;</code>. Computes an equivalent control to keep the state on the surface, plus a switching term <code>&minus;k&middot;sat(s/&epsilon;)</code> that forces trajectories toward it. Extremely robust to model uncertainty (wrong mass, rope length). A boundary layer &epsilon; smooths the switching to reduce force chattering. Tunable: <em>Convergence &lambda;</em> (surface slope), <em>Angle wt &alpha;</em> (pendulum influence), <em>Switch gain k</em> (correction strength), <em>Boundary &epsilon;</em> (chattering vs. precision trade-off).</p>
+                <p><a href="https://en.wikipedia.org/wiki/Model_predictive_control" target="_blank"><strong>MPC</strong></a> (Model Predictive Control) &mdash; Solves a finite-horizon optimal control problem by running a backward <a href="https://en.wikipedia.org/wiki/Riccati_equation" target="_blank">discrete Riccati recursion</a> over N timesteps. At each step it minimizes a quadratic cost on position error, swing, and control effort, yielding a gain matrix applied to the current state error. Unlike infinite-horizon LQR, MPC&rsquo;s gains depend on the horizon length: short horizons (N=5) produce sluggish, conservative control; long horizons (N=200) converge to LQR-like performance. Gains are cached and only recomputed when sliders change. Tunable: <em>Horizon N</em> (planning depth), <em>Pos weight</em> (tracking aggressiveness), <em>Ctrl cost</em> (force penalty).</p>
+                <p><strong>Input Shaping</strong> (IS &mdash; ZVD Shaper) &mdash; A pre-filter that reshapes the goal signal to eliminate residual pendulum swing. Convolves the reference with 3 impulses timed at the pendulum&rsquo;s natural half-period <code>T = 2&pi;&radic;(L/g)</code>: <code>shaped(t) = 0.25&middot;goal(t) + 0.5&middot;goal(t&minus;T/2) + 0.25&middot;goal(t&minus;T)</code>. This Zero Vibration and Derivative (ZVD) shaping guarantees zero residual swing at the endpoint. Can be layered on any controller via the checkbox. The trade-off is a delay of ~T seconds in the goal response. Automatically adapts when rope length changes.</p>
                 <p><strong>Anti-Swing Damping</strong> (SD) &mdash; An energy-based damping layer that can be added on top of any controller. It adds a lateral force proportional to the pendulum&rsquo;s angular velocity: <code>F<sub>damp</sub> = k &middot; &phi;&#x307;</code>. This force &ldquo;chases&rdquo; the swing direction, which dissipates the pendulum&rsquo;s kinetic energy and damps oscillations. The gain k scales automatically with system mass and rope length. Particularly useful with PID and Cascade PD, which don&rsquo;t inherently account for swing dynamics.</p>
                 <p><strong>State variables</strong> &mdash; The simulation tracks 10 state variables: drone position (x, y, z), drone velocity (x&#x307;, y&#x307;, z&#x307;), and two pendulum swing angles &phi;<sub>x</sub> and &phi;<sub>y</sub> with their angular velocities &phi;&#x307;<sub>x</sub> and &phi;&#x307;<sub>y</sub>. The angles &phi; describe how far the rope deviates from vertical in each lateral axis, measured in radians (displayed in degrees in the HUD). Physics are integrated using a 4th-order <a href="https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods" target="_blank">Runge-Kutta</a> (RK4) method at 50 Hz.</p>
             </div>
@@ -130,6 +142,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=2.0"></script>
+    <script type="module" src="main.js?v=2.5"></script>
 </body>
 </html>

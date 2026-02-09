@@ -19,7 +19,7 @@ simLqr.setGoal(0, 0, 1);
 simPid.setGoal(0, 0, 1);
 
 // --- Algorithm name mapping for labels ---
-const ALGO_LABELS = { lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF' };
+const ALGO_LABELS = { lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF', feedbacklin: 'FBL', sliding: 'SMC', mpc: 'MPC' };
 
 const SIM_DT = 0.02;  // fixed sim timestep
 let simAccum = 0;      // fractional sim-time accumulator
@@ -191,6 +191,22 @@ const ALGO_PARAMS = {
         { key: 'kp', label: 'Pos Kp', min: 5, max: 80, step: 1, default: 25 },
         { key: 'kp_phi', label: 'Angle Kp', min: 5, max: 100, step: 1, default: 40 },
     ],
+    feedbacklin: [
+        { key: 'kp', label: 'Pos Kp', min: 2, max: 40, step: 1, default: 12 },
+        { key: 'ka', label: 'Angle Ka', min: 5, max: 80, step: 1, default: 30 },
+        { key: 'kb', label: 'Rate Kb', min: 2, max: 30, step: 1, default: 12 },
+    ],
+    sliding: [
+        { key: 'lambda', label: 'Conv \u03bb', min: 0.5, max: 8, step: 0.5, default: 2 },
+        { key: 'alpha', label: 'Angle wt \u03b1', min: 1, max: 30, step: 1, default: 8 },
+        { key: 'kSwitch', label: 'Switch gain', min: 2, max: 50, step: 1, default: 15 },
+        { key: 'epsilon', label: 'Boundary \u03b5', min: 0.05, max: 2, step: 0.05, default: 0.5 },
+    ],
+    mpc: [
+        { key: 'horizon', label: 'Horizon N', min: 5, max: 200, step: 5, default: 50 },
+        { key: 'qPos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100 },
+        { key: 'rCost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08 },
+    ],
 };
 
 // Stored parameter values per drone per algorithm (persists across switches)
@@ -249,15 +265,19 @@ const algoA = document.getElementById('algo-a');
 const algoB = document.getElementById('algo-b');
 const swingA = document.getElementById('swing-a');
 const swingB = document.getElementById('swing-b');
+const shapingA = document.getElementById('shaping-a');
+const shapingB = document.getElementById('shaping-b');
 
-function getAlgoLabel(selectEl, swingEl) {
-    const algoName = ALGO_LABELS[selectEl.value] || selectEl.value;
-    return algoName + (swingEl.checked ? '+SD' : '');
+function getAlgoLabel(selectEl, swingEl, shapingEl) {
+    let label = ALGO_LABELS[selectEl.value] || selectEl.value;
+    if (swingEl.checked) label += '+SD';
+    if (shapingEl.checked) label += '+IS';
+    return label;
 }
 
 function syncAlgoLabels() {
-    const labelA = getAlgoLabel(algoA, swingA);
-    const labelB = getAlgoLabel(algoB, swingB);
+    const labelA = getAlgoLabel(algoA, swingA, shapingA);
+    const labelB = getAlgoLabel(algoB, swingB, shapingB);
     sceneObjects.updateLabelText(sceneObjects.lqrLabel, labelA, '#4499ff');
     sceneObjects.updateLabelText(sceneObjects.pidLabel, labelB, '#ff8800');
     setHUDLabels(labelA, labelB);
@@ -280,6 +300,14 @@ swingA.addEventListener('change', () => {
 });
 swingB.addEventListener('change', () => {
     simPid.setSwingDamping(swingB.checked);
+    syncAlgoLabels();
+});
+shapingA.addEventListener('change', () => {
+    simLqr.setInputShaping(shapingA.checked);
+    syncAlgoLabels();
+});
+shapingB.addEventListener('change', () => {
+    simPid.setInputShaping(shapingB.checked);
     syncAlgoLabels();
 });
 

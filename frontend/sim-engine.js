@@ -573,6 +573,313 @@ class FlatnessController {
     }
 }
 
+// ─── ZVD Input Shaper (layerable pre-filter) ────────────────────────────────
+// Pre-filters the goal with 3 impulses timed at the pendulum natural frequency.
+// Produces zero residual vibration at the pendulum's natural frequency.
+
+class ZVDShaper {
+    constructor(params, dt) {
+        this.dt = dt;
+        this._buildBuffer(params);
+    }
+
+    _buildBuffer(params) {
+        const T = 2 * Math.PI * Math.sqrt(params.L / params.g);
+        this._period = T;
+        this._halfIdx = Math.round((T / 2) / this.dt);
+        this._fullIdx = Math.round(T / this.dt);
+        const bufLen = this._fullIdx + 1;
+        // Ring buffer stores past goals (3-element arrays)
+        this._buf = new Array(bufLen);
+        for (let i = 0; i < bufLen; i++) this._buf[i] = null;
+        this._head = 0;
+        this._len = bufLen;
+        this._filled = 0;
+        this._lastL = params.L;
+        this._lastG = params.g;
+    }
+
+    shapeGoal(goal, params) {
+        // Detect rope length or gravity change → rebuild buffer
+        if (params.L !== this._lastL || params.g !== this._lastG) {
+            this._buildBuffer(params);
+        }
+
+        // Store current goal in ring buffer
+        this._buf[this._head] = [goal[0], goal[1], goal[2]];
+        this._filled = Math.min(this._filled + 1, this._len);
+
+        // If buffer not yet full, pass goal through unfiltered
+        if (this._filled < this._len) {
+            this._head = (this._head + 1) % this._len;
+            return goal;
+        }
+
+        // ZVD: 0.25 * goal(t) + 0.5 * goal(t - T/2) + 0.25 * goal(t - T)
+        const g0 = this._buf[this._head]; // current (t)
+        const g1Idx = (this._head - this._halfIdx + this._len) % this._len;
+        const g2Idx = (this._head - this._fullIdx + this._len) % this._len;
+        const g1 = this._buf[g1Idx];
+        const g2 = this._buf[g2Idx];
+
+        const shaped = [
+            0.25 * g0[0] + 0.5 * g1[0] + 0.25 * g2[0],
+            0.25 * g0[1] + 0.5 * g1[1] + 0.25 * g2[1],
+            0.25 * g0[2] + 0.5 * g1[2] + 0.25 * g2[2],
+        ];
+
+        this._head = (this._head + 1) % this._len;
+        return shaped;
+    }
+
+    reset(params) {
+        this._buildBuffer(params);
+    }
+}
+
+// ─── Feedback Linearization Controller ──────────────────────────────────────
+// Cancels nonlinear sin/cos coupling, then applies PD on the linearized system.
+
+class FeedbackLinController {
+    constructor(params) {
+        this.params = params;
+        this.kp = 12;
+        this.ka = 30;
+        this.kb = 12;
+    }
+
+    computeControl(state, goal, dt) {
+        const { m_d, m_w, L, g, maxLateral, maxThrust } = this.params;
+        const kd = this.kp * 0.83;
+
+        // X-axis feedback linearization
+        const phi_x = state[6], phix_dot = state[7];
+        const sin_px = Math.sin(phi_x), cos_px = Math.cos(phi_x);
+        const vx = this.kp * (goal[0] - state[0]) - kd * state[1] - this.ka * phi_x - this.kb * phix_dot;
+        let F_x = (m_d + m_w * sin_px * sin_px) * vx
+            - m_w * L * sin_px * phix_dot * phix_dot
+            - m_w * g * sin_px * cos_px;
+
+        // Y-axis feedback linearization
+        const phi_y = state[8], phiy_dot = state[9];
+        const sin_py = Math.sin(phi_y), cos_py = Math.cos(phi_y);
+        const vy = this.kp * (goal[1] - state[2]) - kd * state[3] - this.ka * phi_y - this.kb * phiy_dot;
+        let F_y = (m_d + m_w * sin_py * sin_py) * vy
+            - m_w * L * sin_py * phiy_dot * phiy_dot
+            - m_w * g * sin_py * cos_py;
+
+        // Vertical (simple PD)
+        const ez = (goal[2] + L) - state[4];
+        let F_z = (m_d + m_w) * g + 50 * ez - 30 * state[5];
+
+        F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
+        F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
+        F_z = Math.max(0, Math.min(maxThrust, F_z));
+
+        return [F_x, F_y, F_z];
+    }
+
+    reset() {}
+}
+
+// ─── Sliding Mode Controller ────────────────────────────────────────────────
+// Sliding surface + equivalent control + bounded switching term.
+
+class SlidingModeController {
+    constructor(params) {
+        this.params = params;
+        this.lambda = 2;
+        this.alpha = 8;
+        this.kSwitch = 15;
+        this.epsilon = 0.5;
+    }
+
+    _computeAxis(posErr, vel, phi, phiDot, params) {
+        const { m_d, m_w, L, g } = params;
+        const beta = this.alpha * 0.375;
+
+        // Sliding surface: s = lambda*posErr + vel + alpha*phi + beta*phiDot
+        // Note: posErr = x - x_des, so for "error toward goal" we use (x - x_des)
+        const s = this.lambda * posErr + vel + this.alpha * phi + beta * phiDot;
+
+        // Coefficients from linearized dynamics for equivalent control
+        // ds/dt = lambda*x_dot + x_ddot + alpha*phi_dot + beta*phi_ddot
+        // From EOM (linearized): x_ddot = (F + m_w*g*phi) / (m_d + m_w)
+        //                         phi_ddot = -(F + (m_d+m_w)*g*phi) / ((m_d+m_w)*L)
+        // Coefficient of F in ds/dt:
+        const coeff_F = 1.0 / (m_d + m_w) - beta / ((m_d + m_w) * L);
+
+        // Guard against singularity (when beta ≈ L)
+        if (Math.abs(coeff_F) < 1e-6) {
+            // Fallback: pure switching
+            return -this.kSwitch * this._sat(s);
+        }
+
+        // Terms not involving F in ds/dt:
+        const c_phi = m_w * g / (m_d + m_w) - beta * (m_d + m_w) * g / ((m_d + m_w) * L);
+        // Equivalent control from ds/dt = 0:
+        const F_eq = -(this.lambda * vel + this.alpha * phiDot + c_phi * phi) / coeff_F;
+
+        // Total control: equivalent + switching
+        return F_eq - this.kSwitch * this._sat(s);
+    }
+
+    _sat(s) {
+        if (s > this.epsilon) return 1;
+        if (s < -this.epsilon) return -1;
+        return s / this.epsilon;
+    }
+
+    computeControl(state, goal, dt) {
+        const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
+
+        let F_x = this._computeAxis(
+            state[0] - goal[0], state[1], state[6], state[7], this.params
+        );
+        let F_y = this._computeAxis(
+            state[2] - goal[1], state[3], state[8], state[9], this.params
+        );
+
+        // Vertical (simple PD)
+        const ez = (goal[2] + L) - state[4];
+        let F_z = (m_d + m_w) * g + 50 * ez - 30 * state[5];
+
+        F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
+        F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
+        F_z = Math.max(0, Math.min(maxThrust, F_z));
+
+        return [F_x, F_y, F_z];
+    }
+
+    reset() {}
+}
+
+// ─── MPC Controller (finite-horizon LQR via discrete Riccati) ───────────────
+// Computes gain by backward Riccati recursion over N steps. Caches gains and
+// only recomputes when parameters change (_dirty flag).
+
+class MPCController {
+    constructor(params, dt) {
+        this.params = params;
+        this.dt = dt;
+        this.horizon = 50;
+        this.qPos = 100;
+        this.rCost = 0.08;
+        this._dirty = true;
+        this._K0_lat = null;
+        this._K0_vert = null;
+    }
+
+    _recompute() {
+        const { m_d, m_w, L, g } = this.params;
+        const dt = this.dt;
+        const N = this.horizon;
+
+        // --- Lateral subsystem (4x4) ---
+        const A_lat = matFromArray(4, 4, [
+            0, 1, 0, 0,
+            0, 0, m_w * g / m_d, 0,
+            0, 0, 0, 1,
+            0, 0, -(m_d + m_w) * g / (m_d * L), 0,
+        ]);
+        const B_lat = matFromArray(4, 1, [0, 1 / m_d, 0, -1 / (m_d * L)]);
+
+        // Discretize: Ad = I + A*dt, Bd = B*dt
+        const I4 = matIdentity(4);
+        const Ad_lat = matAdd(I4, matScale(A_lat, dt));
+        const Bd_lat = matScale(B_lat, dt);
+
+        // Q, R, Qf
+        const Q_lat = matFromArray(4, 4, [
+            this.qPos, 0, 0, 0,
+            0, this.qPos * 0.25, 0, 0,
+            0, 0, this.qPos * 1.2, 0,
+            0, 0, 0, this.qPos * 0.3,
+        ]);
+        const R_lat = matFromArray(1, 1, [this.rCost]);
+        const Qf_lat = matScale(Q_lat, 2); // terminal cost
+
+        // Backward Riccati
+        let P = matCopy(Qf_lat);
+        const Ad_latT = matTranspose(Ad_lat);
+        const Bd_latT = matTranspose(Bd_lat);
+        let K0_lat = null;
+
+        for (let i = N - 1; i >= 0; i--) {
+            // K[i] = (R + Bd' P Bd)^-1  Bd' P Ad
+            const BtP = matMul(Bd_latT, P);
+            const BtPBpR = matAdd(R_lat, matMul(BtP, Bd_lat));
+            const BtPA = matMul(BtP, Ad_lat);
+            const K = matMul(matInverse(BtPBpR), BtPA);
+            if (i === 0) K0_lat = K;
+            // P[i] = Q + Ad' P Ad - Ad' P Bd K
+            P = matAdd(Q_lat, matSub(matMul(Ad_latT, matMul(P, Ad_lat)), matMul(matMul(Ad_latT, matMul(P, Bd_lat)), K)));
+        }
+
+        // --- Vertical subsystem (2x2) ---
+        const A_vert = matFromArray(2, 2, [0, 1, 0, 0]);
+        const B_vert = matFromArray(2, 1, [0, 1 / (m_d + m_w)]);
+        const I2 = matIdentity(2);
+        const Ad_vert = matAdd(I2, matScale(A_vert, dt));
+        const Bd_vert = matScale(B_vert, dt);
+        const Q_vert = matFromArray(2, 2, [this.qPos * 2.5, 0, 0, this.qPos * 0.8]);
+        const R_vert = matFromArray(1, 1, [this.rCost]);
+        const Qf_vert = matScale(Q_vert, 2);
+
+        let Pv = matCopy(Qf_vert);
+        const Ad_vertT = matTranspose(Ad_vert);
+        const Bd_vertT = matTranspose(Bd_vert);
+        let K0_vert = null;
+
+        for (let i = N - 1; i >= 0; i--) {
+            const BtP = matMul(Bd_vertT, Pv);
+            const BtPBpR = matAdd(R_vert, matMul(BtP, Bd_vert));
+            const BtPA = matMul(BtP, Ad_vert);
+            const K = matMul(matInverse(BtPBpR), BtPA);
+            if (i === 0) K0_vert = K;
+            Pv = matAdd(Q_vert, matSub(matMul(Ad_vertT, matMul(Pv, Ad_vert)), matMul(matMul(Ad_vertT, matMul(Pv, Bd_vert)), K)));
+        }
+
+        this._K0_lat = K0_lat;
+        this._K0_vert = K0_vert;
+        this._dirty = false;
+    }
+
+    computeControl(state, goal, dt) {
+        if (this._dirty) this._recompute();
+
+        const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
+        const K_lat = this._K0_lat;
+        const K_vert = this._K0_vert;
+
+        // X-axis error
+        const x_err = [state[0] - goal[0], state[1], state[6], state[7]];
+        let F_x = 0;
+        for (let i = 0; i < 4; i++) F_x -= matGet(K_lat, 0, i) * x_err[i];
+
+        // Y-axis error
+        const y_err = [state[2] - goal[1], state[3], state[8], state[9]];
+        let F_y = 0;
+        for (let i = 0; i < 4; i++) F_y -= matGet(K_lat, 0, i) * y_err[i];
+
+        // Z-axis error
+        const z_err = [state[4] - (goal[2] + L), state[5]];
+        let F_z = 0;
+        for (let i = 0; i < 2; i++) F_z -= matGet(K_vert, 0, i) * z_err[i];
+        F_z += (m_d + m_w) * g;
+
+        F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
+        F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
+        F_z = Math.max(0, Math.min(maxThrust, F_z));
+
+        return [F_x, F_y, F_z];
+    }
+
+    markDirty() { this._dirty = true; }
+
+    reset() { this._dirty = true; }
+}
+
 // ─── Energy-Based Swing Damping (layerable on any controller) ───────────────
 // Adds force proportional to phi_dot to dissipate pendulum energy.
 // F_damp = k_e * phi_dot (same direction as angular velocity → damps swing)
@@ -597,6 +904,7 @@ export class Simulation {
         this.time = 0;
         this.controllerType = controllerType;
         this.swingDamping = false;
+        this.inputShaping = false;
 
         // Initial state: drone at z = L, everything else zero
         this.state = new Array(10).fill(0);
@@ -618,22 +926,49 @@ export class Simulation {
 
         // Flatness controller
         this.flatness = new FlatnessController(this.params);
+
+        // Feedback Linearization controller
+        this.feedbacklin = new FeedbackLinController(this.params);
+
+        // Sliding Mode controller
+        this.sliding = new SlidingModeController(this.params);
+
+        // MPC controller
+        this.mpc = new MPCController(this.params, this.dt);
+
+        // ZVD Input Shaper
+        this.zvdShaper = new ZVDShaper(this.params, this.dt);
     }
 
     step() {
+        // Apply input shaping pre-filter if enabled
+        let goal = this.goal;
+        if (this.inputShaping) {
+            goal = this.zvdShaper.shapeGoal(this.goal, this.params);
+        }
+
         let control;
         switch (this.controllerType) {
             case 'pid':
-                control = this.pid.computeControl(this.state, this.goal, this.dt);
+                control = this.pid.computeControl(this.state, goal, this.dt);
                 break;
             case 'cascade':
-                control = this.cascade.computeControl(this.state, this.goal, this.dt);
+                control = this.cascade.computeControl(this.state, goal, this.dt);
                 break;
             case 'flatness':
-                control = this.flatness.computeControl(this.state, this.goal, this.dt);
+                control = this.flatness.computeControl(this.state, goal, this.dt);
+                break;
+            case 'feedbacklin':
+                control = this.feedbacklin.computeControl(this.state, goal, this.dt);
+                break;
+            case 'sliding':
+                control = this.sliding.computeControl(this.state, goal, this.dt);
+                break;
+            case 'mpc':
+                control = this.mpc.computeControl(this.state, goal, this.dt);
                 break;
             default: // 'lqr'
-                control = computeLqrControl(this.state, this.goal, this.K_lat, this.K_vert, this.params);
+                control = computeLqrControl(this.state, goal, this.K_lat, this.K_vert, this.params);
                 break;
         }
 
@@ -688,6 +1023,11 @@ export class Simulation {
         this.swingDamping = enabled;
     }
 
+    setInputShaping(enabled) {
+        this.inputShaping = enabled;
+        if (enabled) this.zvdShaper.reset(this.params);
+    }
+
     setControllerParams(type, p) {
         switch (type) {
             case 'lqr': {
@@ -732,6 +1072,23 @@ export class Simulation {
                 this.flatness.kd_phi = p.kp_phi * 0.375;
                 this.flatness.kp_z = p.kp * 2;
                 this.flatness.kd_z = p.kp * 1.2;
+                break;
+            case 'feedbacklin':
+                this.feedbacklin.kp = p.kp;
+                this.feedbacklin.ka = p.ka;
+                this.feedbacklin.kb = p.kb;
+                break;
+            case 'sliding':
+                this.sliding.lambda = p.lambda;
+                this.sliding.alpha = p.alpha;
+                this.sliding.kSwitch = p.kSwitch;
+                this.sliding.epsilon = p.epsilon;
+                break;
+            case 'mpc':
+                this.mpc.horizon = Math.round(p.horizon);
+                this.mpc.qPos = p.qPos;
+                this.mpc.rCost = p.rCost;
+                this.mpc.markDirty();
                 break;
         }
     }
@@ -782,6 +1139,10 @@ export class Simulation {
         this.pid.params = this.params;
         this.cascade.params = this.params;
         this.flatness.params = this.params;
+        this.feedbacklin.params = this.params;
+        this.sliding.params = this.params;
+        this.mpc.params = this.params;
+        this.mpc.markDirty();
         // Recompute LQR gains for new params
         const { K_lat, K_vert } = computeLqrGains(this.params);
         this.K_lat = K_lat;
@@ -797,5 +1158,9 @@ export class Simulation {
         this.pid.reset();
         this.cascade.reset();
         this.flatness.reset(this.params);
+        this.feedbacklin.reset();
+        this.sliding.reset();
+        this.mpc.reset();
+        this.zvdShaper.reset(this.params);
     }
 }
