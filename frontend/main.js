@@ -154,14 +154,30 @@ const statusEl = document.getElementById('hud-status');
 statusEl.textContent = 'Status: Running locally';
 statusEl.style.color = '#00ff88';
 
-// --- Algorithm submenu toggle ---
-const algoHeader = document.getElementById('algo-header');
-const algoContent = document.getElementById('algo-content');
-const algoArrow = document.getElementById('algo-arrow');
+// --- Collapsible section toggles ---
+function setupCollapsible(headerId, contentId) {
+    const header = document.getElementById(headerId);
+    const content = document.getElementById(contentId);
+    const arrow = header.querySelector('.section-arrow');
+    header.addEventListener('click', () => {
+        const collapsed = content.classList.toggle('collapsed');
+        arrow.innerHTML = collapsed ? '&#x25B6;' : '&#x25BC;';
+    });
+}
+setupCollapsible('goal-header', 'goal-content');
+setupCollapsible('sim-header', 'sim-content');
+setupCollapsible('algo-header', 'algo-content');
 
-algoHeader.addEventListener('click', () => {
-    const collapsed = algoContent.classList.toggle('collapsed');
-    algoArrow.innerHTML = collapsed ? '&#x25B6;' : '&#x25BC;';
+// --- Info overlay ---
+const infoOverlay = document.getElementById('algo-info-overlay');
+document.getElementById('btn-algo-info').addEventListener('click', () => {
+    infoOverlay.classList.remove('hidden');
+});
+document.getElementById('algo-info-close').addEventListener('click', () => {
+    infoOverlay.classList.add('hidden');
+});
+infoOverlay.addEventListener('click', (e) => {
+    if (e.target === infoOverlay) infoOverlay.classList.add('hidden');
 });
 
 // --- Algorithm dropdowns & swing damping checkboxes ---

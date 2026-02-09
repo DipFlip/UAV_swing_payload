@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
-    <link rel="stylesheet" href="style.css?v=1.8">
+    <link rel="stylesheet" href="style.css?v=1.9">
 </head>
 <body>
     <div id="container">
@@ -19,7 +19,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v1.8</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v1.9</div>
             </div>
         </div>
 
@@ -29,51 +29,50 @@
         </div>
 
         <div id="controls">
-            <h3>Goal Position</h3>
-            <div class="slider-group">
-                <label>X: <span id="x-val">0.0</span> m</label>
-                <input type="range" id="slider-x" min="-10" max="10" step="0.5" value="0">
+            <h3 class="collapsible" id="goal-header">Goal Position <span class="section-arrow">&#x25BC;</span></h3>
+            <div id="goal-content" class="section-content">
+                <div class="slider-group">
+                    <label>X: <span id="x-val">0.0</span> m</label>
+                    <input type="range" id="slider-x" min="-10" max="10" step="0.5" value="0">
+                </div>
+                <div class="slider-group">
+                    <label>Y: <span id="y-val">0.0</span> m</label>
+                    <input type="range" id="slider-y" min="-10" max="10" step="0.5" value="0">
+                </div>
+                <div class="slider-group">
+                    <label>Z: <span id="z-val">1.0</span> m</label>
+                    <input type="range" id="slider-z" min="0" max="15" step="0.5" value="1">
+                </div>
+                <div class="slider-group">
+                    <label>Pattern spd: <span id="speed-val">1.0</span>x</label>
+                    <input type="range" id="slider-speed" min="0.2" max="3.0" step="0.2" value="1.0">
+                </div>
             </div>
-            <div class="slider-group">
-                <label>Y: <span id="y-val">0.0</span> m</label>
-                <input type="range" id="slider-y" min="-10" max="10" step="0.5" value="0">
+            <h3 class="collapsible" id="sim-header">Simulation <span class="section-arrow">&#x25BC;</span></h3>
+            <div id="sim-content" class="section-content">
+                <div class="slider-group">
+                    <label>Drone mass: <span id="md-val">2.0</span> kg</label>
+                    <input type="range" id="slider-md" min="0.5" max="10" step="0.5" value="2.0">
+                </div>
+                <div class="slider-group">
+                    <label>Payload: <span id="mw-val">5.0</span> kg</label>
+                    <input type="range" id="slider-mw" min="0.5" max="20" step="0.5" value="5.0">
+                </div>
+                <div class="slider-group">
+                    <label>Rope: <span id="rope-val">4.0</span> m</label>
+                    <input type="range" id="slider-rope" min="1" max="10" step="0.5" value="4.0">
+                </div>
+                <div class="slider-group">
+                    <label>Max force: <span id="fmax-val">80</span> N</label>
+                    <input type="range" id="slider-fmax" min="5" max="200" step="5" value="80">
+                </div>
+                <div class="slider-group">
+                    <label>Time scale: <span id="timescale-val">100</span>%</label>
+                    <input type="range" id="slider-timescale" min="5" max="100" step="5" value="100">
+                </div>
             </div>
-            <div class="slider-group">
-                <label>Z: <span id="z-val">1.0</span> m</label>
-                <input type="range" id="slider-z" min="0" max="15" step="0.5" value="1">
-            </div>
-            <h3>Physics</h3>
-            <div class="slider-group">
-                <label>Drone mass: <span id="md-val">2.0</span> kg</label>
-                <input type="range" id="slider-md" min="0.5" max="10" step="0.5" value="2.0">
-            </div>
-            <div class="slider-group">
-                <label>Payload: <span id="mw-val">5.0</span> kg</label>
-                <input type="range" id="slider-mw" min="0.5" max="20" step="0.5" value="5.0">
-            </div>
-            <div class="slider-group">
-                <label>Rope: <span id="rope-val">4.0</span> m</label>
-                <input type="range" id="slider-rope" min="1" max="10" step="0.5" value="4.0">
-            </div>
-            <div class="slider-group">
-                <label>Max force: <span id="fmax-val">80</span> N</label>
-                <input type="range" id="slider-fmax" min="5" max="200" step="5" value="80">
-            </div>
-            <h3>Controller</h3>
-            <div class="slider-group">
-                <label>Aggression: <span id="aggr-val">50</span>%</label>
-                <input type="range" id="slider-aggr" min="5" max="100" step="5" value="50">
-            </div>
-            <div class="slider-group">
-                <label>Time scale: <span id="timescale-val">100</span>%</label>
-                <input type="range" id="slider-timescale" min="5" max="100" step="5" value="100">
-            </div>
-            <div class="slider-group">
-                <label>Pattern spd: <span id="speed-val">1.0</span>x</label>
-                <input type="range" id="slider-speed" min="0.2" max="3.0" step="0.2" value="1.0">
-            </div>
-            <h3 class="collapsible" id="algo-header">Algorithm <span id="algo-arrow">&#x25B6;</span></h3>
-            <div id="algo-content" class="algo-section collapsed">
+            <h3 class="collapsible" id="algo-header">Algorithm <span class="section-arrow">&#x25B6;</span></h3>
+            <div id="algo-content" class="section-content collapsed">
                 <div class="algo-row">
                     <label>Drone A <span style="color:#4499ff">(blue)</span></label>
                     <select id="algo-a">
@@ -94,12 +93,32 @@
                     </select>
                     <label class="cb-label"><input type="checkbox" id="swing-b"> Anti-swing</label>
                 </div>
+                <div class="slider-group">
+                    <label>Aggression: <span id="aggr-val">50</span>%</label>
+                    <input type="range" id="slider-aggr" min="5" max="100" step="5" value="50">
+                </div>
+                <button id="btn-algo-info" class="info-btn" title="Algorithm info">i</button>
             </div>
             <div class="button-group">
                 <button id="btn-pause">Pause</button>
                 <button id="btn-go">Go</button>
                 <button id="btn-pattern">Square</button>
                 <button id="btn-reset">Reset</button>
+            </div>
+        </div>
+
+        <div id="algo-info-overlay" class="overlay hidden">
+            <div class="overlay-content">
+                <button id="algo-info-close" class="overlay-close">&times;</button>
+                <h3>Control Algorithms</h3>
+                <p><strong>LQR</strong> (Linear Quadratic Regulator) &mdash; Full-state feedback using all 10 state variables including pendulum angles and angular velocities. Solves the continuous algebraic Riccati equation for optimal gains. Knows about the pendulum dynamics and actively compensates for swing.</p>
+                <p><strong>PID</strong> (Proportional-Integral-Derivative) &mdash; Classic 3-axis position control. Only sees drone position error, completely blind to pendulum dynamics. Uses derivative-on-measurement to avoid setpoint kick. Simple but causes more payload swing.</p>
+                <p><strong>Cascade PD</strong> &mdash; Two nested control loops. The outer loop measures payload position error and computes a desired drone offset. The inner loop drives the drone to that offset. By explicitly tracking the payload (not just the drone), it naturally reduces swing without needing a pendulum model.</p>
+                <p><strong>Flatness FF</strong> (Differential Flatness + Feedforward) &mdash; Exploits the mathematical property that the payload position is a "flat output" of the system. Smooths the goal through a reference filter, then algebraically inverts the dynamics to compute where the drone should be and what force to apply. Combines feedforward with PD feedback on both drone position and pendulum angle.</p>
+                <h3>Anti-Swing Damping</h3>
+                <p>Energy-based swing damping that can be layered on any algorithm. Adds a force proportional to the pendulum's angular velocity (<code>F = k &middot; phi_dot</code>) that actively dissipates swing energy. The force "chases" the swing direction, which shortens the effective pendulum and damps oscillations.</p>
+                <h3>Aggression</h3>
+                <p>Scales controller responsiveness using quadratic scaling. At low aggression, controllers are gentle and slow. At high aggression, position tracking weights increase quadratically while control cost decreases, making the drones respond much more aggressively to position errors.</p>
             </div>
         </div>
     </div>
@@ -112,6 +131,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=1.8"></script>
+    <script type="module" src="main.js?v=1.9"></script>
 </body>
 </html>

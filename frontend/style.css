@@ -267,7 +267,7 @@ body {
     background: #999999;
 }
 
-/* Algorithm submenu */
+/* Collapsible sections */
 h3.collapsible {
     cursor: pointer;
     user-select: none;
@@ -277,14 +277,112 @@ h3.collapsible:hover {
     color: #00eeff;
 }
 
-.algo-section {
+.section-content {
     overflow: hidden;
-    transition: max-height 0.2s ease;
-    max-height: 120px;
+    transition: max-height 0.25s ease;
+    max-height: 200px;
 }
 
-.algo-section.collapsed {
+.section-content.collapsed {
     max-height: 0;
+}
+
+.section-arrow {
+    font-size: 10px;
+}
+
+/* Info button */
+.info-btn {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid #00d4ff;
+    background: transparent;
+    color: #00d4ff;
+    font-size: 12px;
+    font-weight: bold;
+    font-style: italic;
+    font-family: Georgia, serif;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    margin-top: 4px;
+}
+
+.info-btn:hover {
+    background: #00d4ff;
+    color: #000;
+}
+
+/* Info overlay */
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+.overlay.hidden {
+    display: none;
+}
+
+.overlay-content {
+    background: rgba(20, 20, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    padding: 24px 28px;
+    max-width: 520px;
+    max-height: 80vh;
+    overflow-y: auto;
+    color: #e0e0e0;
+    font-size: 13px;
+    line-height: 1.6;
+    position: relative;
+}
+
+.overlay-content h3 {
+    color: #00d4ff;
+    font-size: 14px;
+    margin: 14px 0 6px;
+    text-align: left;
+}
+
+.overlay-content h3:first-child {
+    margin-top: 0;
+}
+
+.overlay-content p {
+    margin-bottom: 8px;
+}
+
+.overlay-content code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.overlay-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 22px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.overlay-close:hover {
+    color: #fff;
 }
 
 .algo-row {
