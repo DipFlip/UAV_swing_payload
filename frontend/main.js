@@ -268,6 +268,18 @@ const swingB = document.getElementById('swing-b');
 const shapingA = document.getElementById('shaping-a');
 const shapingB = document.getElementById('shaping-b');
 
+// Anti-swing only benefits controllers that don't already have pendulum feedback
+const SWING_USEFUL = new Set(['pid', 'cascade']);
+
+function updateSwingVisibility(algoValue, swingEl, sim) {
+    const show = SWING_USEFUL.has(algoValue);
+    swingEl.parentElement.style.display = show ? '' : 'none';
+    if (!show && swingEl.checked) {
+        swingEl.checked = false;
+        sim.setSwingDamping(false);
+    }
+}
+
 function getAlgoLabel(selectEl, swingEl, shapingEl) {
     let label = ALGO_LABELS[selectEl.value] || selectEl.value;
     if (swingEl.checked) label += '+SD';
@@ -287,13 +299,19 @@ function syncAlgoLabels() {
 algoA.addEventListener('change', () => {
     simLqr.setControllerType(algoA.value);
     buildAlgoSliders('params-a', 'a', simLqr, algoA.value);
+    updateSwingVisibility(algoA.value, swingA, simLqr);
     syncAlgoLabels();
 });
 algoB.addEventListener('change', () => {
     simPid.setControllerType(algoB.value);
     buildAlgoSliders('params-b', 'b', simPid, algoB.value);
+    updateSwingVisibility(algoB.value, swingB, simPid);
     syncAlgoLabels();
 });
+
+// Set initial visibility (A=lqr → hidden, B=pid → shown)
+updateSwingVisibility(algoA.value, swingA, simLqr);
+updateSwingVisibility(algoB.value, swingB, simPid);
 swingA.addEventListener('change', () => {
     simLqr.setSwingDamping(swingA.checked);
     syncAlgoLabels();
