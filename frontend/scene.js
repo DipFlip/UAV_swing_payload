@@ -8,12 +8,15 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
 export function physicsToThree(px, py, pz) {
     return { x: px, y: pz, z: py };
 }
 
-function createDroneSystem(scene, bodyColor, weightColor, ropeColor, propColor) {
+function createDroneSystem(scene, bodyColor, weightColor, ropeColor, propColor, forceColor) {
     const group = new THREE.Group();
 
     // Body
@@ -48,12 +51,12 @@ function createDroneSystem(scene, bodyColor, weightColor, ropeColor, propColor) 
     const arrowGroup = new THREE.Group();
     const shaftGeo = new THREE.CylinderGeometry(0.06, 0.06, 1, 8);
     shaftGeo.translate(0, 0.5, 0); // pivot at base
-    const shaftMat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
+    const shaftMat = new THREE.MeshStandardMaterial({ color: forceColor });
     const shaft = new THREE.Mesh(shaftGeo, shaftMat);
     arrowGroup.add(shaft);
     const headGeo = new THREE.ConeGeometry(0.2, 0.5, 8);
     headGeo.translate(0, 0.25, 0); // pivot at base of cone
-    const headMat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
+    const headMat = new THREE.MeshStandardMaterial({ color: forceColor });
     const head = new THREE.Mesh(headGeo, headMat);
     arrowGroup.add(head);
     arrowGroup.visible = false;
@@ -131,10 +134,10 @@ export function createScene(canvas) {
     scene.add(ground);
 
     // --- Drone A (blue) ---
-    const lqr = createDroneSystem(scene, 0x2288ff, 0x1155bb, 0x2288ff, 0x44ff44);
+    const lqr = createDroneSystem(scene, 0x2288ff, 0x1155bb, 0x2288ff, 0x44ff44, 0x66bbff);
 
     // --- Drone B (orange) ---
-    const pid = createDroneSystem(scene, 0xff8800, 0xcc5500, 0xff8800, 0xff6644);
+    const pid = createDroneSystem(scene, 0xff8800, 0xcc5500, 0xff8800, 0xff6644, 0xffbb44);
 
     // --- Goal marker ---
     const goalGeo = new THREE.SphereGeometry(0.4, 16, 16);
@@ -148,25 +151,34 @@ export function createScene(canvas) {
     goalMarker.position.set(0, 0, 0);
     scene.add(goalMarker);
 
-    // --- Trails ---
-    function createTrail(color, maxPoints) {
-        const positions = new Float32Array(maxPoints * 3);
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geo.setDrawRange(0, 0);
-        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6, linewidth: 2 });
-        const line = new THREE.Line(geo, mat);
+    // --- Trails (fat lines via Line2) ---
+    const trailMaterials = [];
+
+    function createTrail(color, maxPoints, lineWidth) {
+        const geometry = new LineGeometry();
+        geometry.setPositions([0, 0, 0, 0, 0, 0]);
+        const material = new LineMaterial({
+            color,
+            linewidth: lineWidth,
+            transparent: true,
+            opacity: 0.6,
+        });
+        material.resolution.set(window.innerWidth, window.innerHeight);
+        const line = new Line2(geometry, material);
+        line.visible = false;
         scene.add(line);
-        return { line, head: 0, count: 0, maxPoints };
+        trailMaterials.push(material);
+        return { line, positions: [], maxPoints };
     }
 
-    const TRAIL_MAX = 200; // enough points for ~2s of trail at sim rate
+    const TRAIL_MAX = 200;
+    const TRAIL_WIDTH = 3;
     const trails = {
-        lqrDrone:  createTrail(0x4499ff, TRAIL_MAX),
-        lqrWeight: createTrail(0x1155bb, TRAIL_MAX),
-        pidDrone:  createTrail(0xff8800, TRAIL_MAX),
-        pidWeight: createTrail(0xcc5500, TRAIL_MAX),
-        goal:      createTrail(0x00ff88, TRAIL_MAX),
+        lqrDrone:  createTrail(0x4499ff, TRAIL_MAX, TRAIL_WIDTH),
+        lqrWeight: createTrail(0x1155bb, TRAIL_MAX, TRAIL_WIDTH),
+        pidDrone:  createTrail(0xff8800, TRAIL_MAX, TRAIL_WIDTH),
+        pidWeight: createTrail(0xcc5500, TRAIL_MAX, TRAIL_WIDTH),
+        goal:      createTrail(0x00ff88, TRAIL_MAX, TRAIL_WIDTH),
     };
 
     // --- Labels (floating text sprites) ---
@@ -219,6 +231,7 @@ export function createScene(canvas) {
         }
         camera.updateProjectionMatrix();
         renderer.setSize(W, H);
+        trailMaterials.forEach(m => m.resolution.set(W, H));
     }
 
     // Handle resize

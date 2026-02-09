@@ -66,28 +66,21 @@ function updateDroneSystem(system, dronePos, weightPos, control) {
 }
 
 function pushTrailPoint(trail, x, y, z) {
-    const attr = trail.line.geometry.attributes.position;
-    const arr = attr.array;
-    // Shift all points forward (drop oldest) when full
-    if (trail.count >= trail.maxPoints) {
-        arr.copyWithin(0, 3);
-        const i = (trail.maxPoints - 1) * 3;
-        arr[i] = x; arr[i + 1] = y; arr[i + 2] = z;
-    } else {
-        const i = trail.count * 3;
-        arr[i] = x; arr[i + 1] = y; arr[i + 2] = z;
-        trail.count++;
+    trail.positions.push(x, y, z);
+    if (trail.positions.length > trail.maxPoints * 3) {
+        trail.positions.splice(0, 3);
     }
-    attr.needsUpdate = true;
-    trail.line.geometry.setDrawRange(0, trail.count);
+    if (trail.positions.length >= 6) {
+        trail.line.geometry.setPositions(trail.positions);
+        trail.line.visible = true;
+    }
 }
 
 export function clearTrails(trails) {
     for (const key in trails) {
         const t = trails[key];
-        t.head = 0;
-        t.count = 0;
-        t.line.geometry.setDrawRange(0, 0);
+        t.positions.length = 0;
+        t.line.visible = false;
     }
 }
 
