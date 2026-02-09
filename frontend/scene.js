@@ -130,11 +130,11 @@ export function createScene(canvas) {
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // --- LQR system (blue drone, red weight) ---
-    const lqr = createDroneSystem(scene, 0x2288ff, 0xff3333, 0xcccccc, 0x44ff44);
+    // --- Drone A (blue) ---
+    const lqr = createDroneSystem(scene, 0x2288ff, 0x1155bb, 0x2288ff, 0x44ff44);
 
-    // --- PID system (orange drone, yellow weight) ---
-    const pid = createDroneSystem(scene, 0xff8800, 0xffcc00, 0xffaa66, 0xff6644);
+    // --- Drone B (orange) ---
+    const pid = createDroneSystem(scene, 0xff8800, 0xcc5500, 0xff8800, 0xff6644);
 
     // --- Goal marker ---
     const goalGeo = new THREE.SphereGeometry(0.4, 16, 16);
@@ -163,9 +163,9 @@ export function createScene(canvas) {
     const TRAIL_MAX = 200; // enough points for ~2s of trail at sim rate
     const trails = {
         lqrDrone:  createTrail(0x4499ff, TRAIL_MAX),
-        lqrWeight: createTrail(0xff3333, TRAIL_MAX),
+        lqrWeight: createTrail(0x1155bb, TRAIL_MAX),
         pidDrone:  createTrail(0xff8800, TRAIL_MAX),
-        pidWeight: createTrail(0xffcc00, TRAIL_MAX),
+        pidWeight: createTrail(0xcc5500, TRAIL_MAX),
         goal:      createTrail(0x00ff88, TRAIL_MAX),
     };
 

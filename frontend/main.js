@@ -110,19 +110,9 @@ function sendGoal() {
     simPid.setGoal(x, y, z);
 }
 
-const sliderAggr = document.getElementById('slider-aggr');
-const aggrVal = document.getElementById('aggr-val');
-
-function sendAggression() {
-    const aggr = parseFloat(sliderAggr.value) / 100.0;
-    simLqr.setAggression(aggr);
-    simPid.setAggression(aggr);
-}
-
 sliderX.addEventListener('input', () => { xVal.textContent = sliderX.value; sendGoal(); });
 sliderY.addEventListener('input', () => { yVal.textContent = sliderY.value; sendGoal(); });
 sliderZ.addEventListener('input', () => { zVal.textContent = sliderZ.value; sendGoal(); });
-sliderAggr.addEventListener('input', () => { aggrVal.textContent = sliderAggr.value; sendAggression(); });
 
 // --- Physics sliders ---
 const sliderMd = document.getElementById('slider-md');
@@ -168,17 +158,96 @@ setupCollapsible('goal-header', 'goal-content');
 setupCollapsible('sim-header', 'sim-content');
 setupCollapsible('algo-header', 'algo-content');
 
-// --- Info overlay ---
-const infoOverlay = document.getElementById('algo-info-overlay');
+// --- Info panel (bottom-left) ---
+const infoPanel = document.getElementById('algo-info-panel');
+const infoPanelHeader = document.getElementById('info-panel-header');
+const infoPanelToggle = document.getElementById('info-panel-toggle');
+
 document.getElementById('btn-algo-info').addEventListener('click', () => {
-    infoOverlay.classList.remove('hidden');
+    infoPanel.classList.toggle('visible');
+    infoPanel.classList.remove('collapsed');
+    infoPanelToggle.innerHTML = '&#x25BC;';
 });
-document.getElementById('algo-info-close').addEventListener('click', () => {
-    infoOverlay.classList.add('hidden');
+infoPanelHeader.addEventListener('click', () => {
+    const collapsed = infoPanel.classList.toggle('collapsed');
+    infoPanelToggle.innerHTML = collapsed ? '&#x25B2;' : '&#x25BC;';
 });
-infoOverlay.addEventListener('click', (e) => {
-    if (e.target === infoOverlay) infoOverlay.classList.add('hidden');
-});
+
+// --- Algorithm-specific parameter definitions ---
+const ALGO_PARAMS = {
+    lqr: [
+        { key: 'qpos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100 },
+        { key: 'qphi', label: 'Swing weight', min: 10, max: 500, step: 10, default: 120 },
+        { key: 'rcost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08 },
+    ],
+    pid: [
+        { key: 'kp', label: 'Kp', min: 5, max: 80, step: 1, default: 22 },
+        { key: 'ki', label: 'Ki', min: 0, max: 20, step: 0.5, default: 3 },
+        { key: 'kd', label: 'Kd', min: 5, max: 80, step: 1, default: 24 },
+    ],
+    cascade: [
+        { key: 'kp_outer', label: 'Outer Kp', min: 0.2, max: 5, step: 0.1, default: 1.8 },
+        { key: 'kd_outer', label: 'Outer Kd', min: 0.2, max: 5, step: 0.1, default: 1.2 },
+        { key: 'kp_inner', label: 'Inner Kp', min: 5, max: 80, step: 1, default: 30 },
+        { key: 'kd_inner', label: 'Inner Kd', min: 5, max: 60, step: 1, default: 20 },
+    ],
+    flatness: [
+        { key: 'omega', label: 'Ref speed', min: 0.5, max: 5, step: 0.1, default: 2.0 },
+        { key: 'kp', label: 'Pos Kp', min: 5, max: 80, step: 1, default: 25 },
+        { key: 'kp_phi', label: 'Angle Kp', min: 5, max: 100, step: 1, default: 40 },
+    ],
+};
+
+// Stored parameter values per drone per algorithm (persists across switches)
+const droneParamValues = {
+    a: {}, b: {},
+};
+
+function buildAlgoSliders(containerId, droneId, sim, algoType) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    const paramDefs = ALGO_PARAMS[algoType];
+    if (!paramDefs) return;
+
+    const saved = droneParamValues[droneId][algoType];
+
+    paramDefs.forEach(p => {
+        const val = saved ? saved[p.key] : p.default;
+        const div = document.createElement('div');
+        div.className = 'slider-group';
+        const lbl = document.createElement('label');
+        const span = document.createElement('span');
+        span.textContent = val;
+        lbl.append(p.label + ': ', span);
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = p.min;
+        input.max = p.max;
+        input.step = p.step;
+        input.value = val;
+        input.addEventListener('input', () => {
+            span.textContent = input.value;
+            applyAlgoParams(containerId, droneId, sim, algoType);
+        });
+        div.append(lbl, input);
+        container.appendChild(div);
+    });
+
+    // Apply initial values
+    applyAlgoParams(containerId, droneId, sim, algoType);
+}
+
+function applyAlgoParams(containerId, droneId, sim, algoType) {
+    const container = document.getElementById(containerId);
+    const paramDefs = ALGO_PARAMS[algoType];
+    const values = {};
+    const inputs = container.querySelectorAll('input[type="range"]');
+    paramDefs.forEach((p, i) => {
+        values[p.key] = parseFloat(inputs[i].value);
+    });
+    droneParamValues[droneId][algoType] = values;
+    sim.setControllerParams(algoType, values);
+}
 
 // --- Algorithm dropdowns & swing damping checkboxes ---
 const algoA = document.getElementById('algo-a');
@@ -202,10 +271,12 @@ function syncAlgoLabels() {
 
 algoA.addEventListener('change', () => {
     simLqr.setControllerType(algoA.value);
+    buildAlgoSliders('params-a', 'a', simLqr, algoA.value);
     syncAlgoLabels();
 });
 algoB.addEventListener('change', () => {
     simPid.setControllerType(algoB.value);
+    buildAlgoSliders('params-b', 'b', simPid, algoB.value);
     syncAlgoLabels();
 });
 swingA.addEventListener('change', () => {
@@ -216,6 +287,10 @@ swingB.addEventListener('change', () => {
     simPid.setSwingDamping(swingB.checked);
     syncAlgoLabels();
 });
+
+// Build initial sliders
+buildAlgoSliders('params-a', 'a', simLqr, 'lqr');
+buildAlgoSliders('params-b', 'b', simPid, 'pid');
 
 // --- Pattern animation ---
 const sliderSpeed = document.getElementById('slider-speed');
@@ -291,8 +366,6 @@ btnPattern.addEventListener('click', () => {
 });
 
 // --- UI Buttons ---
-document.getElementById('btn-go').addEventListener('click', sendGoal);
-
 document.getElementById('btn-reset').addEventListener('click', () => {
     stopPattern();
     simLqr.reset();

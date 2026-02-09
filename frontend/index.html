@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
-    <link rel="stylesheet" href="style.css?v=1.9">
+    <link rel="stylesheet" href="style.css?v=2.0">
 </head>
 <body>
     <div id="container">
@@ -19,7 +19,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v1.9</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v2.0</div>
             </div>
         </div>
 
@@ -73,52 +73,49 @@
             </div>
             <h3 class="collapsible" id="algo-header">Algorithm <span class="section-arrow">&#x25B6;</span></h3>
             <div id="algo-content" class="section-content collapsed">
-                <div class="algo-row">
-                    <label>Drone A <span style="color:#4499ff">(blue)</span></label>
-                    <select id="algo-a">
-                        <option value="lqr" selected>LQR</option>
-                        <option value="pid">PID</option>
-                        <option value="cascade">Cascade PD</option>
-                        <option value="flatness">Flatness FF</option>
-                    </select>
-                    <label class="cb-label"><input type="checkbox" id="swing-a"> Anti-swing</label>
+                <div class="drone-config">
+                    <div class="algo-row">
+                        <label>Drone A <span style="color:#4499ff">(blue)</span></label>
+                        <select id="algo-a">
+                            <option value="lqr" selected>LQR</option>
+                            <option value="pid">PID</option>
+                            <option value="cascade">Cascade PD</option>
+                            <option value="flatness">Flatness FF</option>
+                        </select>
+                        <label class="cb-label" title="Energy-based swing damping: adds force proportional to pendulum angular velocity to dissipate swing energy. Can be layered on any algorithm."><input type="checkbox" id="swing-a"> Anti-swing</label>
+                    </div>
+                    <div id="params-a" class="algo-params"></div>
                 </div>
-                <div class="algo-row">
-                    <label>Drone B <span style="color:#ff8800">(orange)</span></label>
-                    <select id="algo-b">
-                        <option value="lqr">LQR</option>
-                        <option value="pid" selected>PID</option>
-                        <option value="cascade">Cascade PD</option>
-                        <option value="flatness">Flatness FF</option>
-                    </select>
-                    <label class="cb-label"><input type="checkbox" id="swing-b"> Anti-swing</label>
-                </div>
-                <div class="slider-group">
-                    <label>Aggression: <span id="aggr-val">50</span>%</label>
-                    <input type="range" id="slider-aggr" min="5" max="100" step="5" value="50">
+                <div class="drone-config">
+                    <div class="algo-row">
+                        <label>Drone B <span style="color:#ff8800">(orange)</span></label>
+                        <select id="algo-b">
+                            <option value="lqr">LQR</option>
+                            <option value="pid" selected>PID</option>
+                            <option value="cascade">Cascade PD</option>
+                            <option value="flatness">Flatness FF</option>
+                        </select>
+                        <label class="cb-label" title="Energy-based swing damping: adds force proportional to pendulum angular velocity to dissipate swing energy. Can be layered on any algorithm."><input type="checkbox" id="swing-b"> Anti-swing</label>
+                    </div>
+                    <div id="params-b" class="algo-params"></div>
                 </div>
                 <button id="btn-algo-info" class="info-btn" title="Algorithm info">i</button>
             </div>
             <div class="button-group">
                 <button id="btn-pause">Pause</button>
-                <button id="btn-go">Go</button>
                 <button id="btn-pattern">Square</button>
                 <button id="btn-reset">Reset</button>
             </div>
         </div>
 
-        <div id="algo-info-overlay" class="overlay hidden">
-            <div class="overlay-content">
-                <button id="algo-info-close" class="overlay-close">&times;</button>
-                <h3>Control Algorithms</h3>
-                <p><strong>LQR</strong> (Linear Quadratic Regulator) &mdash; Full-state feedback using all 10 state variables including pendulum angles and angular velocities. Solves the continuous algebraic Riccati equation for optimal gains. Knows about the pendulum dynamics and actively compensates for swing.</p>
-                <p><strong>PID</strong> (Proportional-Integral-Derivative) &mdash; Classic 3-axis position control. Only sees drone position error, completely blind to pendulum dynamics. Uses derivative-on-measurement to avoid setpoint kick. Simple but causes more payload swing.</p>
-                <p><strong>Cascade PD</strong> &mdash; Two nested control loops. The outer loop measures payload position error and computes a desired drone offset. The inner loop drives the drone to that offset. By explicitly tracking the payload (not just the drone), it naturally reduces swing without needing a pendulum model.</p>
-                <p><strong>Flatness FF</strong> (Differential Flatness + Feedforward) &mdash; Exploits the mathematical property that the payload position is a "flat output" of the system. Smooths the goal through a reference filter, then algebraically inverts the dynamics to compute where the drone should be and what force to apply. Combines feedforward with PD feedback on both drone position and pendulum angle.</p>
-                <h3>Anti-Swing Damping</h3>
-                <p>Energy-based swing damping that can be layered on any algorithm. Adds a force proportional to the pendulum's angular velocity (<code>F = k &middot; phi_dot</code>) that actively dissipates swing energy. The force "chases" the swing direction, which shortens the effective pendulum and damps oscillations.</p>
-                <h3>Aggression</h3>
-                <p>Scales controller responsiveness using quadratic scaling. At low aggression, controllers are gentle and slow. At high aggression, position tracking weights increase quadratically while control cost decreases, making the drones respond much more aggressively to position errors.</p>
+        <div id="algo-info-panel">
+            <div id="info-panel-header"><span>Algorithm Info</span><button id="info-panel-toggle">&#x25BC;</button></div>
+            <div id="info-panel-content">
+                <p><strong>LQR</strong> &mdash; Full-state feedback using all 10 state variables including pendulum angles. Solves the Riccati equation for optimal gains. Tunable: position weight (tracking speed), swing weight (pendulum suppression), control cost (force economy).</p>
+                <p><strong>PID</strong> &mdash; Classic 3-axis position control, blind to pendulum dynamics. Uses derivative-on-measurement to avoid setpoint kick. Tunable: Kp (proportional response), Ki (steady-state error), Kd (damping).</p>
+                <p><strong>Cascade PD</strong> &mdash; Two nested loops: outer tracks payload position, inner drives the drone. Naturally reduces swing by explicitly following the payload. Tunable: outer gains (payload tracking) and inner gains (drone response).</p>
+                <p><strong>Flatness FF</strong> &mdash; Exploits differential flatness: algebraically inverts the dynamics to compute feedforward drone position and forces from a smooth payload reference trajectory. Tunable: reference speed (filter bandwidth), position and angle feedback gains.</p>
+                <p><strong>Anti-swing</strong> &mdash; Energy-based damping layered on any algorithm. Adds force proportional to <code>&phi;&#x307;</code> to actively dissipate swing energy.</p>
             </div>
         </div>
     </div>
@@ -131,6 +128,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=1.9"></script>
+    <script type="module" src="main.js?v=2.0"></script>
 </body>
 </html>

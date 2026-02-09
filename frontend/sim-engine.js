@@ -688,6 +688,54 @@ export class Simulation {
         this.swingDamping = enabled;
     }
 
+    setControllerParams(type, p) {
+        switch (type) {
+            case 'lqr': {
+                const Qlat = matFromArray(4, 4, [
+                    p.qpos, 0, 0, 0,
+                    0, p.qpos * 0.25, 0, 0,
+                    0, 0, p.qphi, 0,
+                    0, 0, 0, p.qphi * 0.25,
+                ]);
+                const Rlat = matFromArray(1, 1, [p.rcost]);
+                const Qvert = matFromArray(2, 2, [p.qpos * 2.5, 0, 0, p.qpos * 0.8]);
+                const Rvert = matFromArray(1, 1, [p.rcost]);
+                const { K_lat, K_vert } = computeLqrGains(this.params, Qlat, Rlat, Qvert, Rvert);
+                this.K_lat = K_lat;
+                this.K_vert = K_vert;
+                break;
+            }
+            case 'pid':
+                this.pid.pidX.kp = p.kp;
+                this.pid.pidX.ki = p.ki;
+                this.pid.pidX.kd = p.kd;
+                this.pid.pidY.kp = p.kp;
+                this.pid.pidY.ki = p.ki;
+                this.pid.pidY.kd = p.kd;
+                this.pid.pidZ.kp = p.kp * 2.3;
+                this.pid.pidZ.ki = p.ki * 3.3;
+                this.pid.pidZ.kd = p.kd * 1.25;
+                break;
+            case 'cascade':
+                this.cascade.kp_outer = p.kp_outer;
+                this.cascade.kd_outer = p.kd_outer;
+                this.cascade.kp_inner = p.kp_inner;
+                this.cascade.kd_inner = p.kd_inner;
+                this.cascade.kp_z = p.kp_inner * 1.67;
+                this.cascade.kd_z = p.kd_inner * 1.5;
+                break;
+            case 'flatness':
+                this.flatness.omega = p.omega;
+                this.flatness.kp = p.kp;
+                this.flatness.kd = p.kp * 0.6;
+                this.flatness.kp_phi = p.kp_phi;
+                this.flatness.kd_phi = p.kp_phi * 0.375;
+                this.flatness.kp_z = p.kp * 2;
+                this.flatness.kd_z = p.kp * 1.2;
+                break;
+        }
+    }
+
     setAggression(aggr) {
         aggr = Math.max(0.05, Math.min(1.0, aggr));
 

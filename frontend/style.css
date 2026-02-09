@@ -231,15 +231,6 @@ body {
     font-weight: 600;
 }
 
-#btn-go {
-    background: #00d4ff;
-    color: #000;
-}
-
-#btn-go:hover {
-    background: #00b8e0;
-}
-
 #btn-pattern {
     background: #8855cc;
     color: #fff;
@@ -280,7 +271,7 @@ h3.collapsible:hover {
 .section-content {
     overflow: hidden;
     transition: max-height 0.25s ease;
-    max-height: 200px;
+    max-height: 500px;
 }
 
 .section-content.collapsed {
@@ -314,75 +305,90 @@ h3.collapsible:hover {
     color: #000;
 }
 
-/* Info overlay */
-.overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.75);
+/* Algorithm info panel (bottom-left) */
+#algo-info-panel {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    width: 340px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#algo-info-panel.visible {
+    display: flex;
+}
+
+#info-panel-header {
     display: flex;
     align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    backdrop-filter: blur(4px);
+    justify-content: space-between;
+    padding: 6px 10px;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
 }
 
-.overlay.hidden {
-    display: none;
-}
-
-.overlay-content {
-    background: rgba(20, 20, 30, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 10px;
-    padding: 24px 28px;
-    max-width: 520px;
-    max-height: 80vh;
-    overflow-y: auto;
-    color: #e0e0e0;
-    font-size: 13px;
-    line-height: 1.6;
-    position: relative;
-}
-
-.overlay-content h3 {
+#info-panel-header span {
     color: #00d4ff;
-    font-size: 14px;
-    margin: 14px 0 6px;
-    text-align: left;
+    font-size: 13px;
+    font-weight: 600;
 }
 
-.overlay-content h3:first-child {
-    margin-top: 0;
-}
-
-.overlay-content p {
-    margin-bottom: 8px;
-}
-
-.overlay-content code {
-    background: rgba(255, 255, 255, 0.1);
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-size: 12px;
-}
-
-.overlay-close {
-    position: absolute;
-    top: 8px;
-    right: 12px;
+#info-panel-toggle {
     background: none;
     border: none;
-    color: #aaa;
-    font-size: 22px;
+    color: #00d4ff;
+    font-size: 14px;
     cursor: pointer;
+    padding: 0 4px;
     line-height: 1;
 }
 
-.overlay-close:hover {
-    color: #fff;
+#info-panel-content {
+    padding: 0 12px 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+#algo-info-panel.collapsed #info-panel-content {
+    display: none;
+}
+
+#info-panel-content p {
+    margin-bottom: 6px;
+}
+
+#info-panel-content code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+/* Algorithm parameter sliders */
+.drone-config {
+    margin-bottom: 4px;
+}
+
+.algo-params {
+    padding-left: 8px;
+}
+
+.algo-params .slider-group {
+    margin-bottom: 1px;
+}
+
+.algo-params .slider-group label {
+    width: 100px;
+    font-size: 11px;
 }
 
 .algo-row {
