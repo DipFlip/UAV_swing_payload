@@ -65,22 +65,53 @@ function updateDroneSystem(system, dronePos, weightPos, control) {
     return { dronePos: dp, weightPos: wp };
 }
 
+const TRAIL_RADIUS = 0.04;
+const _mat4 = new THREE.Matrix4();
+const _start = new THREE.Vector3();
+const _end = new THREE.Vector3();
+const _mid = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _quat = new THREE.Quaternion();
+const _scale = new THREE.Vector3();
+
+function rebuildTrailInstances(trail) {
+    const pts = trail.points;
+    const nPts = pts.length / 3;
+    if (nPts < 2) { trail.mesh.count = 0; return; }
+
+    for (let i = 0; i < nPts - 1; i++) {
+        const si = i * 3;
+        _start.set(pts[si], pts[si + 1], pts[si + 2]);
+        _end.set(pts[si + 3], pts[si + 4], pts[si + 5]);
+        _mid.lerpVectors(_start, _end, 0.5);
+        _dir.subVectors(_end, _start);
+        const len = _dir.length();
+        if (len > 0.0001) {
+            _dir.divideScalar(len);
+            _quat.setFromUnitVectors(_up, _dir);
+        }
+        _scale.set(TRAIL_RADIUS, len, TRAIL_RADIUS);
+        _mat4.compose(_mid, _quat, _scale);
+        trail.mesh.setMatrixAt(i, _mat4);
+    }
+    trail.mesh.count = nPts - 1;
+    trail.mesh.instanceMatrix.needsUpdate = true;
+}
+
 function pushTrailPoint(trail, x, y, z) {
-    trail.positions.push(x, y, z);
-    if (trail.positions.length > trail.maxPoints * 3) {
-        trail.positions.splice(0, 3);
+    trail.points.push(x, y, z);
+    if (trail.points.length > trail.maxPoints * 3) {
+        trail.points.splice(0, 3);
     }
-    if (trail.positions.length >= 6) {
-        trail.line.geometry.setPositions(trail.positions);
-        trail.line.visible = true;
-    }
+    rebuildTrailInstances(trail);
 }
 
 export function clearTrails(trails) {
     for (const key in trails) {
         const t = trails[key];
-        t.positions.length = 0;
-        t.line.visible = false;
+        t.points.length = 0;
+        t.mesh.count = 0;
     }
 }
 

@@ -8,9 +8,6 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Line2 } from 'three/addons/lines/Line2.js';
-import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
-import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
 export function physicsToThree(px, py, pz) {
     return { x: px, y: pz, z: py };
@@ -151,34 +148,27 @@ export function createScene(canvas) {
     goalMarker.position.set(0, 0, 0);
     scene.add(goalMarker);
 
-    // --- Trails (fat lines via Line2) ---
-    const trailMaterials = [];
+    // --- Trails (instanced cylinder segments for visible thickness) ---
+    const TRAIL_MAX = 200;
+    const trailCylGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
 
-    function createTrail(color, maxPoints, lineWidth) {
-        const geometry = new LineGeometry();
-        geometry.setPositions([0, 0, 0, 0, 0, 0]);
-        const material = new LineMaterial({
-            color,
-            linewidth: lineWidth,
-            transparent: true,
-            opacity: 0.6,
+    function createTrail(color, maxPoints) {
+        const mat = new THREE.MeshBasicMaterial({
+            color, transparent: true, opacity: 0.6, depthWrite: false,
         });
-        material.resolution.set(window.innerWidth, window.innerHeight);
-        const line = new Line2(geometry, material);
-        line.visible = false;
-        scene.add(line);
-        trailMaterials.push(material);
-        return { line, positions: [], maxPoints };
+        const mesh = new THREE.InstancedMesh(trailCylGeo, mat, maxPoints - 1);
+        mesh.count = 0;
+        mesh.frustumCulled = false;
+        scene.add(mesh);
+        return { mesh, points: [], maxPoints };
     }
 
-    const TRAIL_MAX = 200;
-    const TRAIL_WIDTH = 3;
     const trails = {
-        lqrDrone:  createTrail(0x4499ff, TRAIL_MAX, TRAIL_WIDTH),
-        lqrWeight: createTrail(0x1155bb, TRAIL_MAX, TRAIL_WIDTH),
-        pidDrone:  createTrail(0xff8800, TRAIL_MAX, TRAIL_WIDTH),
-        pidWeight: createTrail(0xcc5500, TRAIL_MAX, TRAIL_WIDTH),
-        goal:      createTrail(0x00ff88, TRAIL_MAX, TRAIL_WIDTH),
+        lqrDrone:  createTrail(0x4499ff, TRAIL_MAX),
+        lqrWeight: createTrail(0x1155bb, TRAIL_MAX),
+        pidDrone:  createTrail(0xff8800, TRAIL_MAX),
+        pidWeight: createTrail(0xcc5500, TRAIL_MAX),
+        goal:      createTrail(0x00ff88, TRAIL_MAX),
     };
 
     // --- Labels (floating text sprites) ---
@@ -231,7 +221,6 @@ export function createScene(canvas) {
         }
         camera.updateProjectionMatrix();
         renderer.setSize(W, H);
-        trailMaterials.forEach(m => m.resolution.set(W, H));
     }
 
     // Handle resize
