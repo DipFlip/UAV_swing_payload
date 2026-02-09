@@ -580,6 +580,7 @@ class FlatnessController {
 class ZVDShaper {
     constructor(params, dt) {
         this.dt = dt;
+        this._smoothGoal = null;
         this._buildBuffer(params);
     }
 
@@ -589,7 +590,7 @@ class ZVDShaper {
         this._halfIdx = Math.round((T / 2) / this.dt);
         this._fullIdx = Math.round(T / this.dt);
         const bufLen = this._fullIdx + 1;
-        // Ring buffer stores past goals (3-element arrays)
+        // Ring buffer stores past smoothed goals (3-element arrays)
         this._buf = new Array(bufLen);
         for (let i = 0; i < bufLen; i++) this._buf[i] = null;
         this._head = 0;
@@ -597,6 +598,9 @@ class ZVDShaper {
         this._filled = 0;
         this._lastL = params.L;
         this._lastG = params.g;
+        // Pre-smoother: first-order filter with tau = 15% of period
+        // Converts step inputs into smooth ramps before ZVD processing
+        this._alpha = 1 - Math.exp(-this.dt / (T * 0.15));
     }
 
     shapeGoal(goal, params) {
@@ -605,14 +609,23 @@ class ZVDShaper {
             this._buildBuffer(params);
         }
 
-        // Store current goal in ring buffer
-        this._buf[this._head] = [goal[0], goal[1], goal[2]];
+        // Pre-smooth the goal (eliminates step transitions in ZVD output)
+        if (this._smoothGoal === null) {
+            this._smoothGoal = [goal[0], goal[1], goal[2]];
+        } else {
+            this._smoothGoal[0] += this._alpha * (goal[0] - this._smoothGoal[0]);
+            this._smoothGoal[1] += this._alpha * (goal[1] - this._smoothGoal[1]);
+            this._smoothGoal[2] += this._alpha * (goal[2] - this._smoothGoal[2]);
+        }
+
+        // Store smoothed goal in ring buffer
+        this._buf[this._head] = [this._smoothGoal[0], this._smoothGoal[1], this._smoothGoal[2]];
         this._filled = Math.min(this._filled + 1, this._len);
 
-        // If buffer not yet full, pass goal through unfiltered
+        // If buffer not yet full, pass smoothed goal through
         if (this._filled < this._len) {
             this._head = (this._head + 1) % this._len;
-            return goal;
+            return [this._smoothGoal[0], this._smoothGoal[1], this._smoothGoal[2]];
         }
 
         // ZVD: 0.25 * goal(t) + 0.5 * goal(t - T/2) + 0.25 * goal(t - T)
@@ -633,6 +646,7 @@ class ZVDShaper {
     }
 
     reset(params) {
+        this._smoothGoal = null;
         this._buildBuffer(params);
     }
 }
