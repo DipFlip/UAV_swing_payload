@@ -19,7 +19,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v2.0</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v2.1</div>
             </div>
         </div>
 
@@ -48,8 +48,8 @@
                     <input type="range" id="slider-speed" min="0.2" max="3.0" step="0.2" value="1.0">
                 </div>
             </div>
-            <h3 class="collapsible" id="sim-header">Simulation <span class="section-arrow">&#x25BC;</span></h3>
-            <div id="sim-content" class="section-content">
+            <h3 class="collapsible" id="sim-header">Simulation <span class="section-arrow">&#x25B6;</span></h3>
+            <div id="sim-content" class="section-content collapsed">
                 <div class="slider-group">
                     <label>Drone mass: <span id="md-val">2.0</span> kg</label>
                     <input type="range" id="slider-md" min="0.5" max="10" step="0.5" value="2.0">
@@ -71,8 +71,8 @@
                     <input type="range" id="slider-timescale" min="5" max="100" step="5" value="100">
                 </div>
             </div>
-            <h3 class="collapsible" id="algo-header">Algorithm <span class="section-arrow">&#x25B6;</span></h3>
-            <div id="algo-content" class="section-content collapsed">
+            <h3 class="collapsible" id="algo-header">Algorithm <span class="section-arrow">&#x25BC;</span></h3>
+            <div id="algo-content" class="section-content">
                 <div class="drone-config">
                     <div class="algo-row">
                         <label>Drone A <span style="color:#4499ff">(blue)</span></label>
@@ -85,6 +85,7 @@
                         <label class="cb-label" title="Energy-based swing damping: adds force proportional to pendulum angular velocity to dissipate swing energy. Can be layered on any algorithm."><input type="checkbox" id="swing-a"> Anti-swing</label>
                     </div>
                     <div id="params-a" class="algo-params"></div>
+                    <button id="reset-a" class="reset-params-btn">Reset to default</button>
                 </div>
                 <div class="drone-config">
                     <div class="algo-row">
@@ -98,8 +99,8 @@
                         <label class="cb-label" title="Energy-based swing damping: adds force proportional to pendulum angular velocity to dissipate swing energy. Can be layered on any algorithm."><input type="checkbox" id="swing-b"> Anti-swing</label>
                     </div>
                     <div id="params-b" class="algo-params"></div>
+                    <button id="reset-b" class="reset-params-btn">Reset to default</button>
                 </div>
-                <button id="btn-algo-info" class="info-btn" title="Algorithm info">i</button>
             </div>
             <div class="button-group">
                 <button id="btn-pause">Pause</button>
@@ -108,14 +109,15 @@
             </div>
         </div>
 
-        <div id="algo-info-panel">
+        <div id="algo-info-panel" class="visible">
             <div id="info-panel-header"><span>Algorithm Info</span><button id="info-panel-toggle">&#x25BC;</button></div>
             <div id="info-panel-content">
-                <p><strong>LQR</strong> &mdash; Full-state feedback using all 10 state variables including pendulum angles. Solves the Riccati equation for optimal gains. Tunable: position weight (tracking speed), swing weight (pendulum suppression), control cost (force economy).</p>
-                <p><strong>PID</strong> &mdash; Classic 3-axis position control, blind to pendulum dynamics. Uses derivative-on-measurement to avoid setpoint kick. Tunable: Kp (proportional response), Ki (steady-state error), Kd (damping).</p>
-                <p><strong>Cascade PD</strong> &mdash; Two nested loops: outer tracks payload position, inner drives the drone. Naturally reduces swing by explicitly following the payload. Tunable: outer gains (payload tracking) and inner gains (drone response).</p>
-                <p><strong>Flatness FF</strong> &mdash; Exploits differential flatness: algebraically inverts the dynamics to compute feedforward drone position and forces from a smooth payload reference trajectory. Tunable: reference speed (filter bandwidth), position and angle feedback gains.</p>
-                <p><strong>Anti-swing</strong> &mdash; Energy-based damping layered on any algorithm. Adds force proportional to <code>&phi;&#x307;</code> to actively dissipate swing energy.</p>
+                <p><a href="https://en.wikipedia.org/wiki/Linear%E2%80%93quadratic_regulator" target="_blank"><strong>LQR</strong></a> (Linear Quadratic Regulator) &mdash; Optimal full-state feedback controller that uses all 10 state variables: drone position &amp; velocity (x, y, z), pendulum swing angles (&phi;<sub>x</sub>, &phi;<sub>y</sub>) and their angular velocities (&phi;&#x307;<sub>x</sub>, &phi;&#x307;<sub>y</sub>). Computes gains by solving the <a href="https://en.wikipedia.org/wiki/Algebraic_Riccati_equation" target="_blank">continuous algebraic Riccati equation</a> (CARE), which finds the optimal trade-off between tracking performance and control effort. Tunable: <em>Pos weight</em> (how aggressively it tracks position), <em>Swing weight</em> (how strongly it suppresses pendulum oscillations), <em>Ctrl cost</em> (penalty on force usage &mdash; lower = more aggressive).</p>
+                <p><a href="https://en.wikipedia.org/wiki/PID_controller" target="_blank"><strong>PID</strong></a> (Proportional-Integral-Derivative) &mdash; Classic 3-axis position controller that is completely blind to the pendulum dynamics &mdash; it only sees the drone&rsquo;s position error relative to the goal. Uses derivative-on-measurement (differentiates the drone position instead of the error signal) to avoid sudden force spikes when the goal changes. Tunable: <em>Kp</em> (proportional gain &mdash; immediate response to error), <em>Ki</em> (integral gain &mdash; eliminates steady-state offset over time), <em>Kd</em> (derivative gain &mdash; dampens oscillations by opposing velocity).</p>
+                <p><a href="https://en.wikipedia.org/wiki/Cascade_control" target="_blank"><strong>Cascade PD</strong></a> (CPD) &mdash; Two nested <a href="https://en.wikipedia.org/wiki/PD_controller" target="_blank">PD control</a> loops inspired by overhead crane control. The outer loop measures the <em>payload</em> position error and computes a desired drone offset &mdash; if the payload is too far right, it commands the drone further right to &ldquo;pull&rdquo; it back. The inner loop then drives the drone to that desired position. Unlike plain PID, this explicitly tracks the payload rather than just the drone, which naturally reduces swing even without a pendulum model. Tunable: <em>Outer Kp/Kd</em> (payload tracking responsiveness) and <em>Inner Kp/Kd</em> (drone positioning aggressiveness).</p>
+                <p><a href="https://en.wikipedia.org/wiki/Flatness_(systems_theory)" target="_blank"><strong>Flatness FF</strong></a> (Differential Flatness + Feedforward) &mdash; Exploits the mathematical property that the payload position is a <em>flat output</em> of the coupled drone-pendulum system. This means the exact drone trajectory and forces can be computed algebraically from any desired payload trajectory. The controller smooths the goal through a critically-damped 2nd-order reference filter, then inverts the linearized dynamics: desired drone position = payload position + (L/g) &times; payload acceleration, and desired pendulum angle &phi; = &minus;acceleration/g. Combines this feedforward with PD feedback on drone position and pendulum angle for robustness. Tunable: <em>Ref speed</em> (&omega; &mdash; reference filter bandwidth, higher = faster tracking), <em>Pos Kp</em> (position feedback strength), <em>Angle Kp</em> (pendulum angle correction strength).</p>
+                <p><strong>Anti-Swing Damping</strong> (SD) &mdash; An energy-based damping layer that can be added on top of any controller. It adds a lateral force proportional to the pendulum&rsquo;s angular velocity: <code>F<sub>damp</sub> = k &middot; &phi;&#x307;</code>. This force &ldquo;chases&rdquo; the swing direction, which dissipates the pendulum&rsquo;s kinetic energy and damps oscillations. The gain k scales automatically with system mass and rope length. Particularly useful with PID and Cascade PD, which don&rsquo;t inherently account for swing dynamics.</p>
+                <p><strong>State variables</strong> &mdash; The simulation tracks 10 state variables: drone position (x, y, z), drone velocity (x&#x307;, y&#x307;, z&#x307;), and two pendulum swing angles &phi;<sub>x</sub> and &phi;<sub>y</sub> with their angular velocities &phi;&#x307;<sub>x</sub> and &phi;&#x307;<sub>y</sub>. The angles &phi; describe how far the rope deviates from vertical in each lateral axis, measured in radians (displayed in degrees in the HUD). Physics are integrated using a 4th-order <a href="https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods" target="_blank">Runge-Kutta</a> (RK4) method at 50 Hz.</p>
             </div>
         </div>
     </div>

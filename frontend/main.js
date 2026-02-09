@@ -163,11 +163,6 @@ const infoPanel = document.getElementById('algo-info-panel');
 const infoPanelHeader = document.getElementById('info-panel-header');
 const infoPanelToggle = document.getElementById('info-panel-toggle');
 
-document.getElementById('btn-algo-info').addEventListener('click', () => {
-    infoPanel.classList.toggle('visible');
-    infoPanel.classList.remove('collapsed');
-    infoPanelToggle.innerHTML = '&#x25BC;';
-});
 infoPanelHeader.addEventListener('click', () => {
     const collapsed = infoPanel.classList.toggle('collapsed');
     infoPanelToggle.innerHTML = collapsed ? '&#x25B2;' : '&#x25BC;';
@@ -291,6 +286,16 @@ swingB.addEventListener('change', () => {
 // Build initial sliders
 buildAlgoSliders('params-a', 'a', simLqr, 'lqr');
 buildAlgoSliders('params-b', 'b', simPid, 'pid');
+
+// --- Reset-to-default buttons ---
+document.getElementById('reset-a').addEventListener('click', () => {
+    delete droneParamValues.a[algoA.value];
+    buildAlgoSliders('params-a', 'a', simLqr, algoA.value);
+});
+document.getElementById('reset-b').addEventListener('click', () => {
+    delete droneParamValues.b[algoB.value];
+    buildAlgoSliders('params-b', 'b', simPid, algoB.value);
+});
 
 // --- Pattern animation ---
 const sliderSpeed = document.getElementById('slider-speed');

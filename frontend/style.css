@@ -151,6 +151,25 @@ body {
     overflow-y: auto;
     backdrop-filter: blur(4px);
     border: 1px solid rgba(255, 255, 255, 0.1);
+    scrollbar-width: thin;
+    scrollbar-color: #555 transparent;
+}
+
+#controls::-webkit-scrollbar {
+    width: 6px;
+}
+
+#controls::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#controls::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 3px;
+}
+
+#controls::-webkit-scrollbar-thumb:hover {
+    background: #777;
 }
 
 #controls h3 {
@@ -282,27 +301,21 @@ h3.collapsible:hover {
     font-size: 10px;
 }
 
-/* Info button */
-.info-btn {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    border: 1px solid #00d4ff;
-    background: transparent;
-    color: #00d4ff;
-    font-size: 12px;
-    font-weight: bold;
-    font-style: italic;
-    font-family: Georgia, serif;
+/* Reset params button */
+.reset-params-btn {
+    background: none;
+    border: 1px solid #666;
+    color: #999;
+    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 3px;
     cursor: pointer;
-    line-height: 1;
-    padding: 0;
-    margin-top: 4px;
+    margin: 2px 0 2px 8px;
 }
 
-.info-btn:hover {
-    background: #00d4ff;
-    color: #000;
+.reset-params-btn:hover {
+    border-color: #00d4ff;
+    color: #00d4ff;
 }
 
 /* Algorithm info panel (bottom-left) */
@@ -310,7 +323,7 @@ h3.collapsible:hover {
     position: absolute;
     bottom: 10px;
     left: 10px;
-    width: 340px;
+    width: 360px;
     background: rgba(0, 0, 0, 0.7);
     border-radius: 8px;
     backdrop-filter: blur(4px);
@@ -356,6 +369,34 @@ h3.collapsible:hover {
     line-height: 1.5;
     max-height: 50vh;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #555 transparent;
+}
+
+#info-panel-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+#info-panel-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#info-panel-content::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 3px;
+}
+
+#info-panel-content::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+#info-panel-content a {
+    color: #00d4ff;
+    text-decoration: none;
+}
+
+#info-panel-content a:hover {
+    text-decoration: underline;
 }
 
 #algo-info-panel.collapsed #info-panel-content {
