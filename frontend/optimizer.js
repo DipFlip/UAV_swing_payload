@@ -178,9 +178,9 @@ export function evaluateCost(algoType, algoParamDefs, physicsParams, dt) {
 // ─── Auto-Tune Wrapper ─────────────────────────────────────────────────────
 
 export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress) {
-    // Build x0 and bounds from param definitions
+    // Build x0 and bounds from param definitions (use wide optMin/optMax if available)
     const x0 = algoParamDefs.map(p => p.default);
-    const bounds = algoParamDefs.map(p => [p.min, p.max]);
+    const bounds = algoParamDefs.map(p => [p.optMin ?? p.min, p.optMax ?? p.max]);
 
     const costFn = (paramArray) => {
         const paramObj = {};

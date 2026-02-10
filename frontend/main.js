@@ -172,41 +172,41 @@ infoPanelHeader.addEventListener('click', () => {
 // --- Algorithm-specific parameter definitions ---
 const ALGO_PARAMS = {
     lqr: [
-        { key: 'qpos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100 },
-        { key: 'qphi', label: 'Swing weight', min: 10, max: 500, step: 10, default: 120 },
-        { key: 'rcost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08 },
+        { key: 'qpos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100, optMin: 1, optMax: 5000 },
+        { key: 'qphi', label: 'Swing weight', min: 10, max: 500, step: 10, default: 120, optMin: 1, optMax: 5000 },
+        { key: 'rcost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08, optMin: 0.001, optMax: 10 },
     ],
     pid: [
-        { key: 'kp', label: 'Kp', min: 5, max: 80, step: 1, default: 22 },
-        { key: 'ki', label: 'Ki', min: 0, max: 20, step: 0.5, default: 3 },
-        { key: 'kd', label: 'Kd', min: 5, max: 80, step: 1, default: 24 },
+        { key: 'kp', label: 'Kp', min: 5, max: 80, step: 1, default: 22, optMin: 0.5, optMax: 500 },
+        { key: 'ki', label: 'Ki', min: 0, max: 20, step: 0.5, default: 3, optMin: 0, optMax: 100 },
+        { key: 'kd', label: 'Kd', min: 5, max: 80, step: 1, default: 24, optMin: 0.5, optMax: 500 },
     ],
     cascade: [
-        { key: 'kp_outer', label: 'Outer Kp', min: 0.2, max: 5, step: 0.1, default: 1.8 },
-        { key: 'kd_outer', label: 'Outer Kd', min: 0.2, max: 5, step: 0.1, default: 1.2 },
-        { key: 'kp_inner', label: 'Inner Kp', min: 5, max: 80, step: 1, default: 30 },
-        { key: 'kd_inner', label: 'Inner Kd', min: 5, max: 60, step: 1, default: 20 },
+        { key: 'kp_outer', label: 'Outer Kp', min: 0.2, max: 5, step: 0.1, default: 1.8, optMin: 0.01, optMax: 50 },
+        { key: 'kd_outer', label: 'Outer Kd', min: 0.2, max: 5, step: 0.1, default: 1.2, optMin: 0.01, optMax: 50 },
+        { key: 'kp_inner', label: 'Inner Kp', min: 5, max: 80, step: 1, default: 30, optMin: 0.5, optMax: 500 },
+        { key: 'kd_inner', label: 'Inner Kd', min: 5, max: 60, step: 1, default: 20, optMin: 0.5, optMax: 500 },
     ],
     flatness: [
-        { key: 'omega', label: 'Ref speed', min: 0.5, max: 5, step: 0.1, default: 2.0 },
-        { key: 'kp', label: 'Pos Kp', min: 5, max: 80, step: 1, default: 25 },
-        { key: 'kp_phi', label: 'Angle Kp', min: 5, max: 100, step: 1, default: 40 },
+        { key: 'omega', label: 'Ref speed', min: 0.5, max: 5, step: 0.1, default: 2.0, optMin: 0.1, optMax: 30 },
+        { key: 'kp', label: 'Pos Kp', min: 5, max: 80, step: 1, default: 25, optMin: 0.5, optMax: 500 },
+        { key: 'kp_phi', label: 'Angle Kp', min: 5, max: 100, step: 1, default: 40, optMin: 0.5, optMax: 500 },
     ],
     feedbacklin: [
-        { key: 'kp', label: 'Pos Kp', min: 2, max: 40, step: 1, default: 12 },
-        { key: 'ka', label: 'Angle Ka', min: 5, max: 80, step: 1, default: 30 },
-        { key: 'kb', label: 'Rate Kb', min: 2, max: 30, step: 1, default: 12 },
+        { key: 'kp', label: 'Pos Kp', min: 2, max: 40, step: 1, default: 12, optMin: 0.1, optMax: 200 },
+        { key: 'ka', label: 'Angle Ka', min: 5, max: 80, step: 1, default: 30, optMin: 0.5, optMax: 500 },
+        { key: 'kb', label: 'Rate Kb', min: 2, max: 30, step: 1, default: 12, optMin: 0.1, optMax: 200 },
     ],
     sliding: [
-        { key: 'lambda', label: 'Conv \u03bb', min: 0.5, max: 8, step: 0.5, default: 2 },
-        { key: 'alpha', label: 'Angle wt \u03b1', min: 1, max: 30, step: 1, default: 8 },
-        { key: 'kSwitch', label: 'Switch gain', min: 2, max: 50, step: 1, default: 15 },
-        { key: 'epsilon', label: 'Boundary \u03b5', min: 0.05, max: 2, step: 0.05, default: 0.5 },
+        { key: 'lambda', label: 'Conv \u03bb', min: 0.5, max: 8, step: 0.5, default: 2, optMin: 0.05, optMax: 50 },
+        { key: 'alpha', label: 'Angle wt \u03b1', min: 1, max: 30, step: 1, default: 8, optMin: 0.1, optMax: 200 },
+        { key: 'kSwitch', label: 'Switch gain', min: 2, max: 50, step: 1, default: 15, optMin: 0.1, optMax: 300 },
+        { key: 'epsilon', label: 'Boundary \u03b5', min: 0.05, max: 2, step: 0.05, default: 0.5, optMin: 0.01, optMax: 10 },
     ],
     mpc: [
-        { key: 'horizon', label: 'Horizon N', min: 5, max: 200, step: 5, default: 50 },
-        { key: 'qPos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100 },
-        { key: 'rCost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08 },
+        { key: 'horizon', label: 'Horizon N', min: 5, max: 200, step: 5, default: 50, optMin: 2, optMax: 500 },
+        { key: 'qPos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100, optMin: 1, optMax: 5000 },
+        { key: 'rCost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08, optMin: 0.001, optMax: 10 },
     ],
 };
 
@@ -226,6 +226,21 @@ function saveTunedParams(algoType, params) {
     localStorage.setItem(LS_KEY, JSON.stringify(saved));
 }
 
+function expandSliderRanges(algoType, tunedParams) {
+    const defs = ALGO_PARAMS[algoType];
+    if (!defs) return;
+    for (const p of defs) {
+        const val = tunedParams[p.key];
+        if (val === undefined) continue;
+        // Expand slider min/max to include tuned value with ~50% margin for user exploration
+        const margin = Math.max(Math.abs(val) * 0.5, p.step * 3);
+        const wantMin = Math.floor((val - margin) / p.step) * p.step;
+        const wantMax = Math.ceil((val + margin) / p.step) * p.step;
+        p.min = Math.min(p.min, Math.max(p.optMin ?? 0, parseFloat(wantMin.toFixed(6))));
+        p.max = Math.max(p.max, parseFloat(wantMax.toFixed(6)));
+    }
+}
+
 // On startup: overwrite ALGO_PARAMS defaults with any saved tuned values
 (function applySavedDefaults() {
     const saved = loadSavedParams();
@@ -237,6 +252,7 @@ function saveTunedParams(algoType, params) {
                 p.default = params[p.key];
             }
         }
+        expandSliderRanges(algoType, params);
     }
 })();
 
@@ -385,9 +401,10 @@ tuneA.addEventListener('click', () => {
     autoTune(algoType, ALGO_PARAMS[algoType], simLqr.params, SIM_DT, (pct) => {
         tuneA.textContent = `Tuning ${Math.round(pct * 100)}%`;
     }).then(result => {
-        // Save to localStorage and update defaults
+        // Save to localStorage, update defaults, expand slider ranges
         saveTunedParams(algoType, result.params);
         ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
+        expandSliderRanges(algoType, result.params);
         droneParamValues.a[algoType] = result.params;
         droneParamValues.b[algoType] = { ...result.params };
         buildAlgoSliders('params-a', 'a', simLqr, algoType);
@@ -404,9 +421,10 @@ tuneB.addEventListener('click', () => {
     autoTune(algoType, ALGO_PARAMS[algoType], simPid.params, SIM_DT, (pct) => {
         tuneB.textContent = `Tuning ${Math.round(pct * 100)}%`;
     }).then(result => {
-        // Save to localStorage and update defaults
+        // Save to localStorage, update defaults, expand slider ranges
         saveTunedParams(algoType, result.params);
         ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
+        expandSliderRanges(algoType, result.params);
         droneParamValues.b[algoType] = result.params;
         droneParamValues.a[algoType] = { ...result.params };
         buildAlgoSliders('params-b', 'b', simPid, algoType);
@@ -501,12 +519,13 @@ tuneAllBtn.addEventListener('click', () => {
         const total = Object.keys(ALGO_PARAMS).length;
         tuneAllBtn.textContent = `Tuning ${label} (${idx}/${total}) ${Math.round(pct * 100)}%`;
     }).then(results => {
-        // Save all results to localStorage, update defaults, update drone param values
+        // Save all results to localStorage, update defaults, expand slider ranges
         for (const r of results) {
             saveTunedParams(r.algoType, r.params);
             ALGO_PARAMS[r.algoType].forEach(p => {
                 if (r.params[p.key] !== undefined) p.default = r.params[p.key];
             });
+            expandSliderRanges(r.algoType, r.params);
             droneParamValues.a[r.algoType] = { ...r.params };
             droneParamValues.b[r.algoType] = { ...r.params };
         }
