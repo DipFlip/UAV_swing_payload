@@ -318,6 +318,26 @@ h3.collapsible:hover {
     color: #00d4ff;
 }
 
+.tune-btn {
+    background: none;
+    border: 1px solid #00d4ff;
+    color: #00d4ff;
+    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin: 2px 0 2px 4px;
+}
+
+.tune-btn:hover {
+    background: rgba(0, 212, 255, 0.15);
+}
+
+.tune-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 /* Algorithm info panel (bottom-left) */
 #algo-info-panel {
     position: absolute;

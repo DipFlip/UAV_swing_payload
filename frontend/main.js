@@ -6,6 +6,7 @@ import { createScene } from './scene.js';
 import { updateScene, updateHUD, setHUDLabels, clearTrails } from './simulation.js';
 import { ChartPanel } from './charts.js';
 import { Simulation } from './sim-engine.js';
+import { autoTune } from './optimizer.js';
 
 const canvas = document.getElementById('canvas');
 const sceneObjects = createScene(canvas);
@@ -341,6 +342,38 @@ document.getElementById('reset-a').addEventListener('click', () => {
 document.getElementById('reset-b').addEventListener('click', () => {
     delete droneParamValues.b[algoB.value];
     buildAlgoSliders('params-b', 'b', simPid, algoB.value);
+});
+
+// --- Auto-tune buttons ---
+const tuneA = document.getElementById('tune-a');
+const tuneB = document.getElementById('tune-b');
+
+tuneA.addEventListener('click', () => {
+    const algoType = algoA.value;
+    tuneA.disabled = true;
+    tuneA.textContent = 'Tuning...';
+    autoTune(algoType, ALGO_PARAMS[algoType], simLqr.params, SIM_DT, (pct) => {
+        tuneA.textContent = `Tuning ${Math.round(pct * 100)}%`;
+    }).then(result => {
+        droneParamValues.a[algoType] = result.params;
+        buildAlgoSliders('params-a', 'a', simLqr, algoType);
+        tuneA.disabled = false;
+        tuneA.textContent = 'Auto-tune';
+    });
+});
+
+tuneB.addEventListener('click', () => {
+    const algoType = algoB.value;
+    tuneB.disabled = true;
+    tuneB.textContent = 'Tuning...';
+    autoTune(algoType, ALGO_PARAMS[algoType], simPid.params, SIM_DT, (pct) => {
+        tuneB.textContent = `Tuning ${Math.round(pct * 100)}%`;
+    }).then(result => {
+        droneParamValues.b[algoType] = result.params;
+        buildAlgoSliders('params-b', 'b', simPid, algoType);
+        tuneB.disabled = false;
+        tuneB.textContent = 'Auto-tune';
+    });
 });
 
 // --- Pattern animation ---

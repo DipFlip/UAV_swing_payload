@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
-    <link rel="stylesheet" href="style.css?v=2.8">
+    <link rel="stylesheet" href="style.css?v=2.9">
 </head>
 <body>
     <div id="container">
@@ -19,7 +19,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v2.8</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v2.9</div>
             </div>
         </div>
 
@@ -90,6 +90,7 @@
                     </div>
                     <div id="params-a" class="algo-params"></div>
                     <button id="reset-a" class="reset-params-btn">Reset to default</button>
+                    <button id="tune-a" class="tune-btn">Auto-tune</button>
                 </div>
                 <div class="drone-config">
                     <div class="algo-row">
@@ -108,6 +109,7 @@
                     </div>
                     <div id="params-b" class="algo-params"></div>
                     <button id="reset-b" class="reset-params-btn">Reset to default</button>
+                    <button id="tune-b" class="tune-btn">Auto-tune</button>
                 </div>
             </div>
             <div class="button-group">
@@ -142,6 +144,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=2.8"></script>
+    <script type="module" src="main.js?v=2.9"></script>
 </body>
 </html>
