@@ -956,7 +956,7 @@ class SlidingModeController {
         // Terms not involving F in ds/dt:
         const c_phi = m_w * g / (m_d + m_w) - beta * (m_d + m_w) * g / ((m_d + m_w) * L);
         // Equivalent control from ds/dt = 0:
-        const F_eq = -(this.lambda * vel + this.alpha * phiDot + c_phi * phi) / coeff_F;
+        const F_eq = -(this.lambda * velErr + this.alpha * phiDot + c_phi * phi) / coeff_F;
 
         // Total control: equivalent + switching
         return F_eq - this.kSwitch * this._sat(s);
