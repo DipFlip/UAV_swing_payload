@@ -20,7 +20,7 @@ simLqr.setGoal(0, 0, 1);
 simPid.setGoal(0, 0, 1);
 
 // --- Algorithm name mapping for labels ---
-const ALGO_LABELS = { lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF', feedbacklin: 'FBL', sliding: 'SMC', mpc: 'MPC' };
+const ALGO_LABELS = { off: 'OFF', lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF', feedbacklin: 'FBL', sliding: 'SMC', mpc: 'MPC' };
 
 const SIM_DT = 0.02;  // fixed sim timestep
 let simAccum = 0;      // fractional sim-time accumulator

@@ -1202,6 +1202,9 @@ export class Simulation {
 
         let control;
         switch (this.controllerType) {
+            case 'off':
+                control = [0, 0, (this.params.m_d + this.params.m_w) * this.params.g];
+                break;
             case 'pid':
                 control = this.pid.computeControl(this.state, ref, this.dt);
                 break;
