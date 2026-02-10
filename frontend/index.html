@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
     <link rel="icon" href="favicon.ico" type="image/x-icon">
-    <link rel="stylesheet" href="style.css?v=4.3">
+    <link rel="stylesheet" href="style.css?v=4.4">
 </head>
 <body>
     <div id="container">
         <canvas id="canvas"></canvas>
 
         <div id="hud">
-            <div id="hud-header"><h3>Simulation HUD</h3><button id="hud-toggle">&#x25BC;</button></div>
+            <div id="hud-header"><h3>Simulation HUD</h3><a href="https://github.com/DipFlip/UAV_swing_payload" target="_blank" style="color:#888;font-size:12px;text-decoration:none;margin-left:auto;margin-right:8px">GitHub</a><button id="hud-toggle">&#x25BC;</button></div>
             <div id="hud-content">
                 <div id="hud-time">Time: 0.00 s</div>
                 <div id="hud-drone">Drone: (0, 0, 0)</div>
@@ -20,7 +20,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v4.3</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v4.4</div>
             </div>
         </div>
 
@@ -213,6 +213,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=4.3"></script>
+    <script type="module" src="main.js?v=4.4"></script>
 </body>
 </html>
