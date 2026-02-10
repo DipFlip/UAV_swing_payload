@@ -156,14 +156,24 @@ const ropeVal = document.getElementById('rope-val');
 const sliderFmax = document.getElementById('slider-fmax');
 const fmaxVal = document.getElementById('fmax-val');
 
+const hoverVal = document.getElementById('hover-val');
+
+function updateHoverDisplay() {
+    const m_d = parseFloat(sliderMd.value);
+    const m_w = parseFloat(sliderMw.value);
+    const hover = Math.round((m_d + m_w) * 9.81);
+    hoverVal.textContent = `(hover: ${hover})`;
+}
+
 function sendParams() {
     const m_d = parseFloat(sliderMd.value);
     const m_w = parseFloat(sliderMw.value);
     const L = parseFloat(sliderRope.value);
-    const maxLateral = parseFloat(sliderFmax.value);
-    const maxThrust = maxLateral * 2.5; // keep thrust proportional
+    const maxThrust = parseFloat(sliderFmax.value);
+    const maxLateral = maxThrust * 0.4;
     simLqr.setParams({ m_d, m_w, L, maxLateral, maxThrust });
     simPid.setParams({ m_d, m_w, L, maxLateral, maxThrust });
+    updateHoverDisplay();
 }
 
 sliderMd.addEventListener('input', () => { mdVal.textContent = sliderMd.value; sendParams(); });
