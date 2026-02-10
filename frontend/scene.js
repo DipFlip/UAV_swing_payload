@@ -182,7 +182,6 @@ export function createScene(canvas) {
     });
     const previewLineGeo = new THREE.BufferGeometry();
     const previewLine = new THREE.Line(previewLineGeo, previewLineMat);
-    previewLine.computeLineDistances();
     previewLine.visible = false;
     scene.add(previewLine);
 
