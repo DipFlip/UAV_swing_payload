@@ -181,6 +181,25 @@ sliderRope.addEventListener('input', () => { ropeVal.textContent = sliderRope.va
 sliderMw.addEventListener('input', () => { mwVal.textContent = sliderMw.value; sendParams(); });
 sliderFmax.addEventListener('input', () => { fmaxVal.textContent = sliderFmax.value; sendParams(); });
 
+// --- Wind sliders ---
+const sliderWindStr = document.getElementById('slider-wind-str');
+const windStrVal = document.getElementById('wind-str-val');
+const sliderWindDir = document.getElementById('slider-wind-dir');
+const windDirVal = document.getElementById('wind-dir-val');
+
+function sendWind() {
+    const strength = parseFloat(sliderWindStr.value);
+    const dirDeg = parseFloat(sliderWindDir.value);
+    const dirRad = dirDeg * Math.PI / 180;
+    const windX = strength * Math.cos(dirRad);
+    const windY = strength * Math.sin(dirRad);
+    simLqr.setParams({ windX, windY });
+    simPid.setParams({ windX, windY });
+}
+
+sliderWindStr.addEventListener('input', () => { windStrVal.textContent = sliderWindStr.value; sendWind(); });
+sliderWindDir.addEventListener('input', () => { windDirVal.textContent = sliderWindDir.value; sendWind(); });
+
 // --- Status ---
 const statusEl = document.getElementById('hud-status');
 statusEl.textContent = 'Status: Running locally';

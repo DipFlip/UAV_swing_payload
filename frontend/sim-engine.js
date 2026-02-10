@@ -209,6 +209,8 @@ const DEFAULT_PARAMS = {
     g: 9.81,           // gravity (m/s^2)
     maxLateral: 80,    // max lateral force per axis (N)
     maxThrust: 200,    // max vertical thrust (N)
+    windX: 0,          // wind force on payload, x-axis (N)
+    windY: 0,          // wind force on payload, y-axis (N)
 };
 
 function solve2x2(a11, a12, a21, a22, b1, b2) {
@@ -218,14 +220,16 @@ function solve2x2(a11, a12, a21, a22, b1, b2) {
 
 function derivatives(state, control, params) {
     const { m_d, m_w, L, g } = params;
+    const Fw_x = params.windX || 0;
+    const Fw_y = params.windY || 0;
     const [x_d, xd_dot, y_d, yd_dot, z_d, zd_dot, phi_x, phix_dot, phi_y, phiy_dot] = state;
     const [F_x, F_y, F_z] = control;
 
-    // X-phi_x subsystem
+    // X-phi_x subsystem (wind force on payload adds to both equations)
     const cos_px = Math.cos(phi_x);
     const sin_px = Math.sin(phi_x);
-    const rhs_x0 = F_x + m_w * L * phix_dot * phix_dot * sin_px;
-    const rhs_x1 = -m_w * g * L * sin_px;
+    const rhs_x0 = F_x + Fw_x + m_w * L * phix_dot * phix_dot * sin_px;
+    const rhs_x1 = Fw_x * L * cos_px - m_w * g * L * sin_px;
     const [x_dd, phix_dd] = solve2x2(
         m_d + m_w, m_w * L * cos_px,
         m_w * L * cos_px, m_w * L * L,
@@ -235,8 +239,8 @@ function derivatives(state, control, params) {
     // Y-phi_y subsystem
     const cos_py = Math.cos(phi_y);
     const sin_py = Math.sin(phi_y);
-    const rhs_y0 = F_y + m_w * L * phiy_dot * phiy_dot * sin_py;
-    const rhs_y1 = -m_w * g * L * sin_py;
+    const rhs_y0 = F_y + Fw_y + m_w * L * phiy_dot * phiy_dot * sin_py;
+    const rhs_y1 = Fw_y * L * cos_py - m_w * g * L * sin_py;
     const [y_dd, phiy_dd] = solve2x2(
         m_d + m_w, m_w * L * cos_py,
         m_w * L * cos_py, m_w * L * L,
