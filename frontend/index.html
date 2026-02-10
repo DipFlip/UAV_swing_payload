@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
     <link rel="icon" href="favicon.ico" type="image/x-icon">
-    <link rel="stylesheet" href="style.css?v=4.4">
+    <link rel="stylesheet" href="style.css?v=4.5">
 </head>
 <body>
     <div id="container">
@@ -20,7 +20,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v4.4</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v4.5</div>
             </div>
         </div>
 
@@ -56,20 +56,20 @@
             <h3 class="collapsible" id="sim-header">Simulation <span class="section-arrow">&#x25B6;</span></h3>
             <div id="sim-content" class="section-content collapsed">
                 <div class="slider-group">
-                    <label>Drone mass: <span id="md-val">2.0</span> kg</label>
-                    <input type="range" id="slider-md" min="0.5" max="20" step="0.5" value="2.0">
+                    <label>Drone mass: <span id="md-val">11.0</span> kg</label>
+                    <input type="range" id="slider-md" min="0.5" max="20" step="0.5" value="11.0">
                 </div>
                 <div class="slider-group">
-                    <label>Payload: <span id="mw-val">5.0</span> kg</label>
-                    <input type="range" id="slider-mw" min="0.5" max="20" step="0.5" value="5.0">
+                    <label>Payload: <span id="mw-val">7.0</span> kg</label>
+                    <input type="range" id="slider-mw" min="0.5" max="20" step="0.5" value="7.0">
                 </div>
                 <div class="slider-group">
-                    <label>Rope: <span id="rope-val">4.0</span> m</label>
-                    <input type="range" id="slider-rope" min="1" max="10" step="0.5" value="4.0">
+                    <label>Rope: <span id="rope-val">8.0</span> m</label>
+                    <input type="range" id="slider-rope" min="1" max="10" step="0.5" value="8.0">
                 </div>
                 <div class="slider-group">
-                    <label>Max thrust: <span id="fmax-val">200</span> N <span id="hover-val" style="color:#888;font-size:10px">(hover: 69)</span></label>
-                    <input type="range" id="slider-fmax" min="20" max="750" step="10" value="200">
+                    <label>Max thrust: <span id="fmax-val">350</span> N <span id="hover-val" style="color:#888;font-size:10px">(hover: 177)</span></label>
+                    <input type="range" id="slider-fmax" min="20" max="750" step="10" value="350">
                 </div>
                 <div class="slider-group">
                     <label>Time scale: <span id="timescale-val">100</span>%</label>
@@ -213,6 +213,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=4.4"></script>
+    <script type="module" src="main.js?v=4.5"></script>
 </body>
 </html>

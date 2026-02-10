@@ -203,12 +203,12 @@ function solveCARE(A, B, Q, R, n) {
 // ─── Physics ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_PARAMS = {
-    m_d: 2.0,          // drone mass (kg)
-    m_w: 5.0,          // weight mass (kg)
-    L: 4.0,            // rope length (m)
+    m_d: 11.0,         // drone mass (kg)
+    m_w: 7.0,          // weight mass (kg)
+    L: 8.0,            // rope length (m)
     g: 9.81,           // gravity (m/s^2)
-    maxLateral: 80,    // max lateral force per axis (N)
-    maxThrust: 200,    // max vertical thrust (N)
+    maxLateral: 140,   // max lateral force per axis (N)
+    maxThrust: 350,    // max vertical thrust (N)
     windX: 0,          // wind force on payload, x-axis (N)
     windY: 0,          // wind force on payload, y-axis (N)
 };
