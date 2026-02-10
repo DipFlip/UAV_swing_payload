@@ -5,7 +5,7 @@
 import { createScene } from './scene.js';
 import { updateScene, updateHUD, setHUDLabels, clearTrails } from './simulation.js';
 import { ChartPanel } from './charts.js';
-import { Simulation, createSquareTrajectory } from './sim-engine.js';
+import { Simulation, createSquareTrajectory, createLawnmowerTrajectory } from './sim-engine.js';
 import { autoTune, tuneAll } from './optimizer.js';
 
 const canvas = document.getElementById('canvas');
@@ -120,8 +120,9 @@ function sendGoal() {
     // Manual goal change cancels active pattern
     if (patternActive) {
         patternActive = false;
+        sceneObjects.hidePatternPreview();
         const btn = document.getElementById('btn-pattern');
-        btn.textContent = 'Square';
+        btn.textContent = 'Start';
         btn.style.background = '#8855cc';
     }
 }
@@ -134,10 +135,15 @@ sliderZ.addEventListener('input', () => { zVal.textContent = sliderZ.value; send
 const sliderSmooth = document.getElementById('slider-smooth');
 const smoothVal = document.getElementById('smooth-val');
 sliderSmooth.addEventListener('input', () => {
-    const omega = parseFloat(sliderSmooth.value);
-    smoothVal.textContent = omega.toFixed(1);
-    simLqr.setSmootherOmega(omega);
-    simPid.setSmootherOmega(omega);
+    const val = parseFloat(sliderSmooth.value);
+    smoothVal.textContent = val.toFixed(1);
+    // Map to smoother omega: 0=bypass (no smoothing), >0=omega value
+    simLqr.setSmootherOmega(val);
+    simPid.setSmootherOmega(val);
+    // Rebuild trajectory with new tension if pattern is active
+    if (patternActive) {
+        rebuildActiveTrajectory();
+    }
 });
 
 // --- Physics sliders ---
@@ -515,40 +521,66 @@ const speedVal = document.getElementById('speed-val');
 sliderSpeed.addEventListener('input', () => {
     speedVal.textContent = sliderSpeed.value;
     if (patternActive) {
-        const speed = parseFloat(sliderSpeed.value) || 1.0;
-        const traj = createSquareTrajectory(SQUARE_SIZE, SQUARE_Z, speed);
-        simLqr.setTrajectory(traj);
-        simPid.setTrajectory(traj);
+        rebuildActiveTrajectory();
     }
 });
 
 let patternActive = false;
 const btnPattern = document.getElementById('btn-pattern');
+const patternSelect = document.getElementById('pattern-type');
 
 const SQUARE_SIZE = 6;
 const SQUARE_Z = 3;
+const MOWER_SIZE = 8;
+
+function getTension() {
+    const val = parseFloat(sliderSmooth.value);
+    // Map smooth slider to tension: 0=sharp (tension=1), 8=smooth (tension=0)
+    return Math.max(0, 1 - val / 8);
+}
+
+function buildTrajectory() {
+    const speed = parseFloat(sliderSpeed.value) || 1.0;
+    const tension = getTension();
+    const type = patternSelect.value;
+    if (type === 'mower') {
+        return createLawnmowerTrajectory(MOWER_SIZE, SQUARE_Z, speed, tension);
+    }
+    return createSquareTrajectory(SQUARE_SIZE, SQUARE_Z, speed, tension);
+}
+
+function rebuildActiveTrajectory() {
+    const traj = buildTrajectory();
+    simLqr.setTrajectory(traj);
+    simPid.setTrajectory(traj);
+    sceneObjects.updatePatternPreview(traj.samplePath(200));
+}
 
 function startPattern() {
     patternActive = true;
     btnPattern.textContent = 'Stop';
     btnPattern.style.background = '#ffaa00';
-    const speed = parseFloat(sliderSpeed.value) || 1.0;
-    const traj = createSquareTrajectory(SQUARE_SIZE, SQUARE_Z, speed);
-    simLqr.setTrajectory(traj);
-    simPid.setTrajectory(traj);
+    rebuildActiveTrajectory();
 }
 
 function stopPattern() {
     patternActive = false;
     simLqr.clearTrajectory();
     simPid.clearTrajectory();
-    btnPattern.textContent = 'Square';
+    sceneObjects.hidePatternPreview();
+    btnPattern.textContent = 'Start';
     btnPattern.style.background = '#8855cc';
 }
 
 btnPattern.addEventListener('click', () => {
     if (patternActive) stopPattern();
     else startPattern();
+});
+
+patternSelect.addEventListener('change', () => {
+    if (patternActive) {
+        rebuildActiveTrajectory();
+    }
 });
 
 // --- Tune All handler ---

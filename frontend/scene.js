@@ -171,6 +171,44 @@ export function createScene(canvas) {
         goal:      createTrail(0x00ff88, TRAIL_MAX),
     };
 
+    // --- Pattern preview line ---
+    const previewLineMat = new THREE.LineDashedMaterial({
+        color: 0x00ff88,
+        transparent: true,
+        opacity: 0.5,
+        dashSize: 0.3,
+        gapSize: 0.15,
+        linewidth: 1,
+    });
+    const previewLineGeo = new THREE.BufferGeometry();
+    const previewLine = new THREE.Line(previewLineGeo, previewLineMat);
+    previewLine.computeLineDistances();
+    previewLine.visible = false;
+    scene.add(previewLine);
+
+    function updatePatternPreview(points) {
+        // points: array of [x,y,z] in physics coords
+        if (!points || points.length < 2) {
+            previewLine.visible = false;
+            return;
+        }
+        const verts = new Float32Array(points.length * 3);
+        for (let i = 0; i < points.length; i++) {
+            const p = physicsToThree(points[i][0], points[i][1], points[i][2]);
+            verts[i * 3] = p.x;
+            verts[i * 3 + 1] = p.y;
+            verts[i * 3 + 2] = p.z;
+        }
+        previewLineGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        previewLineGeo.computeBoundingSphere();
+        previewLine.computeLineDistances();
+        previewLine.visible = true;
+    }
+
+    function hidePatternPreview() {
+        previewLine.visible = false;
+    }
+
     // --- Labels (floating text sprites) ---
     function makeLabel(text, color) {
         const canvas2d = document.createElement('canvas');
@@ -248,6 +286,8 @@ export function createScene(canvas) {
         lqrLabel, pidLabel,
         updateLabelText,
         trails,
+        updatePatternPreview,
+        hidePatternPreview,
         setOnAnimate(fn) { onAnimate = fn; },
     };
 }

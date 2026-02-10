@@ -513,6 +513,12 @@ class GoalSmoother3D {
     }
 
     update(goal, dt) {
+        // Bypass mode: no smoothing, pass goal directly
+        if (this._omega <= 0) {
+            this._pos = [...goal];
+            this._vel = [0, 0, 0];
+            return { pos: [...goal], vel: [0, 0, 0], acc: [0, 0, 0] };
+        }
         const omega = this._omega;
         const acc = [0, 0, 0];
         for (let i = 0; i < 3; i++) {
@@ -537,13 +543,21 @@ class GoalSmoother3D {
 // Takes {pos: [x,y,z], time: number}[] waypoints, provides C1-continuous interpolation.
 
 class WaypointTrajectory {
-    constructor(waypoints, { loop = false } = {}) {
+    /**
+     * @param {Array} waypoints - [{pos: [x,y,z], time: number}, ...]
+     * @param {Object} opts
+     * @param {boolean} opts.loop - wrap around at end
+     * @param {number} opts.tension - 0=Catmull-Rom (smooth), 1=linear (sharp corners)
+     */
+    constructor(waypoints, { loop = false, tension = 0 } = {}) {
         this._wp = waypoints;
         this._loop = loop;
+        this._tension = Math.max(0, Math.min(1, tension));
         this._duration = waypoints[waypoints.length - 1].time - waypoints[0].time;
     }
 
     get duration() { return this._duration; }
+    get waypoints() { return this._wp; }
 
     evaluate(t) {
         const wp = this._wp;
@@ -579,9 +593,20 @@ class WaypointTrajectory {
         const p0 = wp[seg].pos;
         const p1 = wp[seg + 1].pos;
 
-        // Catmull-Rom tangents
-        const m0 = this._tangent(seg, n);
-        const m1 = this._tangent(seg + 1, n);
+        // Linear interpolation (tension = 1)
+        if (this._tension >= 1) {
+            const pos = [0, 0, 0], vel = [0, 0, 0];
+            for (let i = 0; i < 3; i++) {
+                pos[i] = p0[i] + (p1[i] - p0[i]) * u;
+                vel[i] = (p1[i] - p0[i]) / dt;
+            }
+            return { pos, vel, acc: [0, 0, 0] };
+        }
+
+        // Catmull-Rom tangents (scaled by 1 - tension)
+        const scale = 1 - this._tension;
+        const m0 = this._tangent(seg, n, scale);
+        const m1 = this._tangent(seg + 1, n, scale);
 
         // Hermite basis functions
         const u2 = u * u, u3 = u2 * u;
@@ -612,30 +637,53 @@ class WaypointTrajectory {
         return { pos, vel, acc };
     }
 
-    _tangent(idx, n) {
+    /**
+     * Sample the trajectory path at uniform intervals for visualization.
+     * @param {number} numPoints
+     * @returns {Array<[number,number,number]>} positions
+     */
+    samplePath(numPoints) {
+        const points = [];
+        for (let i = 0; i <= numPoints; i++) {
+            const t = (i / numPoints) * this._duration;
+            const ref = this.evaluate(t);
+            points.push(ref.pos);
+        }
+        return points;
+    }
+
+    _tangent(idx, n, scale) {
         const wp = this._wp;
-        let prev, next;
+        let prev, next, dtSpan;
 
         if (this._loop) {
             // For looping, wrap around (skip duplicated last point)
             const loopN = n - 1; // last point = first point
-            prev = wp[((idx - 1) % loopN + loopN) % loopN];
-            next = wp[((idx + 1) % loopN + loopN) % loopN];
+            const prevIdx = ((idx - 1) % loopN + loopN) % loopN;
+            const nextIdx = ((idx + 1) % loopN + loopN) % loopN;
+            prev = wp[prevIdx];
+            next = wp[nextIdx];
+            // Compute time span in the forward direction around the loop
+            dtSpan = next.time - prev.time;
+            if (dtSpan <= 0) {
+                // Wraps around the loop boundary
+                dtSpan = this._duration - prev.time + wp[0].time + (next.time - wp[0].time);
+            }
         } else {
             prev = wp[Math.max(0, idx - 1)];
             next = wp[Math.min(n - 1, idx + 1)];
+            dtSpan = next.time - prev.time || 1;
         }
 
-        const dtSpan = next.time - prev.time || 1;
         return [
-            (next.pos[0] - prev.pos[0]) / dtSpan,
-            (next.pos[1] - prev.pos[1]) / dtSpan,
-            (next.pos[2] - prev.pos[2]) / dtSpan,
+            scale * (next.pos[0] - prev.pos[0]) / dtSpan,
+            scale * (next.pos[1] - prev.pos[1]) / dtSpan,
+            scale * (next.pos[2] - prev.pos[2]) / dtSpan,
         ];
     }
 }
 
-export function createSquareTrajectory(size, z, speed) {
+export function createSquareTrajectory(size, z, speed, tension = 1) {
     const segTime = size / speed;
     const half = size / 2;
     const waypoints = [
@@ -645,7 +693,40 @@ export function createSquareTrajectory(size, z, speed) {
         { pos: [ half, -half, z], time: 3 * segTime },
         { pos: [ half,  half, z], time: 4 * segTime },
     ];
-    return new WaypointTrajectory(waypoints, { loop: true });
+    return new WaypointTrajectory(waypoints, { loop: true, tension });
+}
+
+export function createLawnmowerTrajectory(size, z, speed, tension = 1) {
+    const strips = 5;
+    const half = size / 2;
+    const spacing = size / (strips - 1);
+    const stripTime = size / speed;
+    const shiftTime = spacing / speed;
+
+    const waypoints = [];
+    let t = 0;
+
+    for (let i = 0; i < strips; i++) {
+        const x = -half + i * spacing;
+        const goingUp = (i % 2 === 0);
+        const y0 = goingUp ? -half : half;
+        const y1 = goingUp ? half : -half;
+
+        waypoints.push({ pos: [x, y0, z], time: t });
+        t += stripTime;
+        waypoints.push({ pos: [x, y1, z], time: t });
+
+        if (i < strips - 1) {
+            t += shiftTime;
+        }
+    }
+
+    // Return to start for loop closure
+    const returnDist = Math.sqrt(size * size + size * size);
+    t += returnDist / speed;
+    waypoints.push({ pos: [...waypoints[0].pos], time: t });
+
+    return new WaypointTrajectory(waypoints, { loop: true, tension });
 }
 
 class FlatnessController {
