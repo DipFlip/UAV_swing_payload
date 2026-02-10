@@ -5,7 +5,7 @@
 import { createScene } from './scene.js';
 import { updateScene, updateHUD, setHUDLabels, clearTrails } from './simulation.js';
 import { ChartPanel } from './charts.js';
-import { Simulation } from './sim-engine.js';
+import { Simulation, createSquareTrajectory } from './sim-engine.js';
 import { autoTune, tuneAll } from './optimizer.js';
 
 const canvas = document.getElementById('canvas');
@@ -92,6 +92,14 @@ sceneObjects.setOnAnimate((wallDt) => {
         updateHUD(data);
         chartPanel.update(data, prevData);
         prevData = data;
+
+        // Sync sliders from trajectory position
+        if (patternActive) {
+            const g = simLqr.goal;
+            sliderX.value = g[0]; xVal.textContent = g[0].toFixed(1);
+            sliderY.value = g[1]; yVal.textContent = g[1].toFixed(1);
+            sliderZ.value = g[2]; zVal.textContent = g[2].toFixed(1);
+        }
     }
 });
 
@@ -109,11 +117,28 @@ function sendGoal() {
     const z = parseFloat(sliderZ.value);
     simLqr.setGoal(x, y, z);
     simPid.setGoal(x, y, z);
+    // Manual goal change cancels active pattern
+    if (patternActive) {
+        patternActive = false;
+        const btn = document.getElementById('btn-pattern');
+        btn.textContent = 'Square';
+        btn.style.background = '#8855cc';
+    }
 }
 
 sliderX.addEventListener('input', () => { xVal.textContent = sliderX.value; sendGoal(); });
 sliderY.addEventListener('input', () => { yVal.textContent = sliderY.value; sendGoal(); });
 sliderZ.addEventListener('input', () => { zVal.textContent = sliderZ.value; sendGoal(); });
+
+// --- Goal smoothing slider ---
+const sliderSmooth = document.getElementById('slider-smooth');
+const smoothVal = document.getElementById('smooth-val');
+sliderSmooth.addEventListener('input', () => {
+    const omega = parseFloat(sliderSmooth.value);
+    smoothVal.textContent = omega.toFixed(1);
+    simLqr.setSmootherOmega(omega);
+    simPid.setSmootherOmega(omega);
+});
 
 // --- Physics sliders ---
 const sliderMd = document.getElementById('slider-md');
@@ -188,7 +213,6 @@ const ALGO_PARAMS = {
         { key: 'kd_inner', label: 'Inner Kd', min: 5, max: 60, step: 1, default: 20, optMin: 0.5, optMax: 500 },
     ],
     flatness: [
-        { key: 'omega', label: 'Ref speed', min: 0.5, max: 5, step: 0.1, default: 2.0, optMin: 0.1, optMax: 30 },
         { key: 'kp', label: 'Pos Kp', min: 5, max: 80, step: 1, default: 25, optMin: 0.5, optMax: 500 },
         { key: 'kp_phi', label: 'Angle Kp', min: 5, max: 100, step: 1, default: 40, optMin: 0.5, optMax: 500 },
     ],
@@ -488,67 +512,36 @@ tuneB.addEventListener('click', () => {
 // --- Pattern animation ---
 const sliderSpeed = document.getElementById('slider-speed');
 const speedVal = document.getElementById('speed-val');
-sliderSpeed.addEventListener('input', () => { speedVal.textContent = sliderSpeed.value; });
+sliderSpeed.addEventListener('input', () => {
+    speedVal.textContent = sliderSpeed.value;
+    if (patternActive) {
+        const speed = parseFloat(sliderSpeed.value) || 1.0;
+        const traj = createSquareTrajectory(SQUARE_SIZE, SQUARE_Z, speed);
+        simLqr.setTrajectory(traj);
+        simPid.setTrajectory(traj);
+    }
+});
 
 let patternActive = false;
-let patternRaf = null;
 const btnPattern = document.getElementById('btn-pattern');
 
-// Square corners at height z=3, size 6x6
 const SQUARE_SIZE = 6;
 const SQUARE_Z = 3;
-const squareCorners = [
-    { x:  SQUARE_SIZE/2, y:  SQUARE_SIZE/2, z: SQUARE_Z },
-    { x: -SQUARE_SIZE/2, y:  SQUARE_SIZE/2, z: SQUARE_Z },
-    { x: -SQUARE_SIZE/2, y: -SQUARE_SIZE/2, z: SQUARE_Z },
-    { x:  SQUARE_SIZE/2, y: -SQUARE_SIZE/2, z: SQUARE_Z },
-];
 
 function startPattern() {
     patternActive = true;
     btnPattern.textContent = 'Stop';
     btnPattern.style.background = '#ffaa00';
-
-    let progress = 0;
-    let lastTime = performance.now();
-
-    function tick(now) {
-        if (!patternActive) return;
-
-        const dt = (now - lastTime) / 1000;
-        lastTime = now;
-
-        if (paused) { patternRaf = requestAnimationFrame(tick); return; }
-
-        const speed = parseFloat(sliderSpeed.value) || 1.0;
-        const timeScale = parseFloat(sliderTimescale.value) / 100;
-        progress += (speed / 3.0) * dt * timeScale;
-        if (progress >= 4) progress -= 4;
-
-        const seg = Math.floor(progress);
-        const t = progress - seg;
-        const a = squareCorners[seg];
-        const b = squareCorners[(seg + 1) % 4];
-        const gx = a.x + (b.x - a.x) * t;
-        const gy = a.y + (b.y - a.y) * t;
-        const gz = a.z + (b.z - a.z) * t;
-
-        simLqr.setGoal(gx, gy, gz);
-        simPid.setGoal(gx, gy, gz);
-
-        sliderX.value = gx; xVal.textContent = gx.toFixed(1);
-        sliderY.value = gy; yVal.textContent = gy.toFixed(1);
-        sliderZ.value = gz; zVal.textContent = gz.toFixed(1);
-
-        patternRaf = requestAnimationFrame(tick);
-    }
-    patternRaf = requestAnimationFrame(tick);
+    const speed = parseFloat(sliderSpeed.value) || 1.0;
+    const traj = createSquareTrajectory(SQUARE_SIZE, SQUARE_Z, speed);
+    simLqr.setTrajectory(traj);
+    simPid.setTrajectory(traj);
 }
 
 function stopPattern() {
     patternActive = false;
-    if (patternRaf) cancelAnimationFrame(patternRaf);
-    patternRaf = null;
+    simLqr.clearTrajectory();
+    simPid.clearTrajectory();
     btnPattern.textContent = 'Square';
     btnPattern.style.background = '#8855cc';
 }

@@ -304,23 +304,23 @@ function computeLqrGains(params, Qlat, Rlat, Qvert, Rvert) {
     return { K_lat, K_vert };
 }
 
-function computeLqrControl(state, goal, K_lat, K_vert, params) {
-    const x_d_des = goal[0];
-    const y_d_des = goal[1];
-    const z_d_des = goal[2] + params.L;
+function computeLqrControl(state, ref, K_lat, K_vert, params) {
+    const x_d_des = ref.pos[0];
+    const y_d_des = ref.pos[1];
+    const z_d_des = ref.pos[2] + params.L;
 
-    // X-axis
-    const x_err = [state[0] - x_d_des, state[1], state[6], state[7]];
+    // X-axis (include desired velocity in error state)
+    const x_err = [state[0] - x_d_des, state[1] - ref.vel[0], state[6], state[7]];
     let F_x = 0;
     for (let i = 0; i < 4; i++) F_x -= matGet(K_lat, 0, i) * x_err[i];
 
     // Y-axis
-    const y_err = [state[2] - y_d_des, state[3], state[8], state[9]];
+    const y_err = [state[2] - y_d_des, state[3] - ref.vel[1], state[8], state[9]];
     let F_y = 0;
     for (let i = 0; i < 4; i++) F_y -= matGet(K_lat, 0, i) * y_err[i];
 
     // Z-axis
-    const z_err = [state[4] - z_d_des, state[5]];
+    const z_err = [state[4] - z_d_des, state[5] - ref.vel[2]];
     let F_z = 0;
     for (let i = 0; i < 2; i++) F_z -= matGet(K_vert, 0, i) * z_err[i];
 
@@ -372,15 +372,19 @@ class PIDController {
         this.pidZ = new PIDAxis(50, 10, 30);
     }
 
-    computeControl(state, goal, dt) {
+    computeControl(state, ref, dt) {
         const { L, m_d, m_w, g } = this.params;
-        const ex = goal[0] - state[0];
-        const ey = goal[1] - state[2];
-        const ez = (goal[2] + L) - state[4];
+        const ex = ref.pos[0] - state[0];
+        const ey = ref.pos[1] - state[2];
+        const ez = (ref.pos[2] + L) - state[4];
 
         let F_x = this.pidX.step(ex, state[0], dt);
         let F_y = this.pidY.step(ey, state[2], dt);
         let F_z = this.pidZ.step(ez, state[4], dt);
+
+        // Acceleration feedforward
+        F_x += (m_d + m_w) * ref.acc[0];
+        F_y += (m_d + m_w) * ref.acc[1];
 
         F_z += (m_d + m_w) * g;
 
@@ -419,12 +423,12 @@ class CascadePDController {
         this.prevPayloadY = null;
     }
 
-    computeControl(state, goal, dt) {
+    computeControl(state, ref, dt) {
         const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
 
         // Current payload position
         const w = weightPosition(state, L);
-        const goalDroneZ = goal[2] + L;
+        const goalDroneZ = ref.pos[2] + L;
 
         // Payload velocity estimate (derivative on measurement)
         let wdx = 0, wdy = 0;
@@ -436,10 +440,11 @@ class CascadePDController {
         this.prevPayloadY = w.y;
 
         // Outer loop: desired drone position based on payload error
-        const payload_ex = goal[0] - w.x;
-        const payload_ey = goal[1] - w.y;
-        const drone_x_des = w.x + this.kp_outer * payload_ex + this.kd_outer * (-wdx);
-        const drone_y_des = w.y + this.kp_outer * payload_ey + this.kd_outer * (-wdy);
+        // Include ref.vel for improved tracking of moving references
+        const payload_ex = ref.pos[0] - w.x;
+        const payload_ey = ref.pos[1] - w.y;
+        const drone_x_des = w.x + this.kp_outer * payload_ex + this.kd_outer * (ref.vel[0] - wdx);
+        const drone_y_des = w.y + this.kp_outer * payload_ey + this.kd_outer * (ref.vel[1] - wdy);
 
         // Inner loop: force from drone position error
         const drone_ex = drone_x_des - state[0];
@@ -497,14 +502,155 @@ class RefTrajectory {
     }
 }
 
+// ─── Goal Smoother (3-axis 2nd-order critically-damped filter) ───────────────
+// Converts raw [x,y,z] goal into {pos, vel, acc} reference with smooth transitions.
+
+class GoalSmoother3D {
+    constructor(pos0, omega) {
+        this._pos = [...pos0];
+        this._vel = [0, 0, 0];
+        this._omega = omega;
+    }
+
+    update(goal, dt) {
+        const omega = this._omega;
+        const acc = [0, 0, 0];
+        for (let i = 0; i < 3; i++) {
+            acc[i] = omega * omega * (goal[i] - this._pos[i]) - 2.0 * omega * this._vel[i];
+            this._vel[i] += acc[i] * dt;
+            this._pos[i] += this._vel[i] * dt;
+        }
+        return { pos: [...this._pos], vel: [...this._vel], acc: [...acc] };
+    }
+
+    reset(pos) {
+        this._pos = [...pos];
+        this._vel = [0, 0, 0];
+    }
+
+    setOmega(omega) {
+        this._omega = omega;
+    }
+}
+
+// ─── Waypoint Trajectory (Catmull-Rom cubic Hermite spline) ──────────────────
+// Takes {pos: [x,y,z], time: number}[] waypoints, provides C1-continuous interpolation.
+
+class WaypointTrajectory {
+    constructor(waypoints, { loop = false } = {}) {
+        this._wp = waypoints;
+        this._loop = loop;
+        this._duration = waypoints[waypoints.length - 1].time - waypoints[0].time;
+    }
+
+    get duration() { return this._duration; }
+
+    evaluate(t) {
+        const wp = this._wp;
+        const n = wp.length;
+
+        // Loop wrapping
+        if (this._loop && this._duration > 0) {
+            t = ((t % this._duration) + this._duration) % this._duration;
+            t += wp[0].time;
+        } else {
+            t += wp[0].time;
+        }
+
+        // Clamp to endpoints
+        if (t <= wp[0].time) {
+            return { pos: [...wp[0].pos], vel: [0, 0, 0], acc: [0, 0, 0] };
+        }
+        if (!this._loop && t >= wp[n - 1].time) {
+            return { pos: [...wp[n - 1].pos], vel: [0, 0, 0], acc: [0, 0, 0] };
+        }
+
+        // Find segment: wp[seg] <= t < wp[seg+1]
+        let seg = 0;
+        for (let i = 0; i < n - 1; i++) {
+            if (t >= wp[i].time && t < wp[i + 1].time) { seg = i; break; }
+        }
+
+        const t0 = wp[seg].time;
+        const t1 = wp[seg + 1].time;
+        const dt = t1 - t0;
+        const u = (t - t0) / dt; // normalized [0,1)
+
+        const p0 = wp[seg].pos;
+        const p1 = wp[seg + 1].pos;
+
+        // Catmull-Rom tangents
+        const m0 = this._tangent(seg, n);
+        const m1 = this._tangent(seg + 1, n);
+
+        // Hermite basis functions
+        const u2 = u * u, u3 = u2 * u;
+        const h00 = 2 * u3 - 3 * u2 + 1;
+        const h10 = u3 - 2 * u2 + u;
+        const h01 = -2 * u3 + 3 * u2;
+        const h11 = u3 - u2;
+
+        // Hermite basis derivatives (w.r.t. u)
+        const dh00 = 6 * u2 - 6 * u;
+        const dh10 = 3 * u2 - 4 * u + 1;
+        const dh01 = -6 * u2 + 6 * u;
+        const dh11 = 3 * u2 - 2 * u;
+
+        // Hermite basis second derivatives (w.r.t. u)
+        const ddh00 = 12 * u - 6;
+        const ddh10 = 6 * u - 4;
+        const ddh01 = -12 * u + 6;
+        const ddh11 = 6 * u - 2;
+
+        const pos = [0, 0, 0], vel = [0, 0, 0], acc = [0, 0, 0];
+        for (let i = 0; i < 3; i++) {
+            pos[i] = h00 * p0[i] + h10 * dt * m0[i] + h01 * p1[i] + h11 * dt * m1[i];
+            vel[i] = (dh00 * p0[i] + dh10 * dt * m0[i] + dh01 * p1[i] + dh11 * dt * m1[i]) / dt;
+            acc[i] = (ddh00 * p0[i] + ddh10 * dt * m0[i] + ddh01 * p1[i] + ddh11 * dt * m1[i]) / (dt * dt);
+        }
+
+        return { pos, vel, acc };
+    }
+
+    _tangent(idx, n) {
+        const wp = this._wp;
+        let prev, next;
+
+        if (this._loop) {
+            // For looping, wrap around (skip duplicated last point)
+            const loopN = n - 1; // last point = first point
+            prev = wp[((idx - 1) % loopN + loopN) % loopN];
+            next = wp[((idx + 1) % loopN + loopN) % loopN];
+        } else {
+            prev = wp[Math.max(0, idx - 1)];
+            next = wp[Math.min(n - 1, idx + 1)];
+        }
+
+        const dtSpan = next.time - prev.time || 1;
+        return [
+            (next.pos[0] - prev.pos[0]) / dtSpan,
+            (next.pos[1] - prev.pos[1]) / dtSpan,
+            (next.pos[2] - prev.pos[2]) / dtSpan,
+        ];
+    }
+}
+
+export function createSquareTrajectory(size, z, speed) {
+    const segTime = size / speed;
+    const half = size / 2;
+    const waypoints = [
+        { pos: [ half,  half, z], time: 0 },
+        { pos: [-half,  half, z], time: segTime },
+        { pos: [-half, -half, z], time: 2 * segTime },
+        { pos: [ half, -half, z], time: 3 * segTime },
+        { pos: [ half,  half, z], time: 4 * segTime },
+    ];
+    return new WaypointTrajectory(waypoints, { loop: true });
+}
+
 class FlatnessController {
     constructor(params) {
         this.params = params;
-        this.omega = 2.0;
-        // Reference trajectories for payload position
-        this.trajX = new RefTrajectory(0);
-        this.trajY = new RefTrajectory(0);
-        this.trajZ = new RefTrajectory(params.L);
         // Feedback gains
         this.kp = 25;
         this.kd = 15;
@@ -514,26 +660,20 @@ class FlatnessController {
         this.kd_z = 30;
     }
 
-    computeControl(state, goal, dt) {
+    computeControl(state, ref, dt) {
         const { L, g, m_d, m_w, maxLateral, maxThrust } = this.params;
 
-        // Generate smooth payload reference
-        const xRef = this.trajX.update(goal[0], this.omega, dt);
-        const yRef = this.trajY.update(goal[1], this.omega, dt);
-        const zRef = this.trajZ.update(goal[2] + L, this.omega, dt);
+        // Flatness inversion using ref.acc directly (no internal filter needed)
+        const x_d_des = ref.pos[0] + (L / g) * ref.acc[0];
+        const y_d_des = ref.pos[1] + (L / g) * ref.acc[1];
 
-        // Flatness inversion (linearized):
-        // desired drone position = payload_ref + (L/g) * payload_accel
-        const x_d_des = xRef.pos + (L / g) * xRef.acc;
-        const y_d_des = yRef.pos + (L / g) * yRef.acc;
+        // Desired pendulum angle from flatness: phi = -acc / g
+        const phi_x_des = -ref.acc[0] / g;
+        const phi_y_des = -ref.acc[1] / g;
 
-        // Desired pendulum angle from flatness: phi = -x_w_ddot / g
-        const phi_x_des = -xRef.acc / g;
-        const phi_y_des = -yRef.acc / g;
-
-        // Feedforward force: F = (m_d + m_w) * x_w_ddot
-        const Fx_ff = (m_d + m_w) * xRef.acc;
-        const Fy_ff = (m_d + m_w) * yRef.acc;
+        // Feedforward force: F = (m_d + m_w) * acc
+        const Fx_ff = (m_d + m_w) * ref.acc[0];
+        const Fy_ff = (m_d + m_w) * ref.acc[1];
 
         // Feedback: PD on drone position + PD on pendulum angle
         let F_x = Fx_ff
@@ -545,8 +685,9 @@ class FlatnessController {
             - this.kp_phi * (state[8] - phi_y_des) - this.kd_phi * state[9];
 
         // Vertical (no pendulum coupling)
+        const zDes = ref.pos[2] + L;
         let F_z = (m_d + m_w) * g
-            + this.kp_z * (zRef.pos - state[4]) - this.kd_z * state[5];
+            + this.kp_z * (zDes - state[4]) - this.kd_z * state[5];
 
         F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
         F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
@@ -557,7 +698,6 @@ class FlatnessController {
 
     setAggression(aggr) {
         const s = aggr * (0.5 + 0.5 * aggr);
-        this.omega = 1.0 + 2.0 * aggr;
         this.kp = 25 * s;
         this.kd = 15 * s;
         this.kp_phi = 40 * s;
@@ -566,11 +706,7 @@ class FlatnessController {
         this.kd_z = 30 * s;
     }
 
-    reset(params) {
-        this.trajX.reset(0);
-        this.trajY.reset(0);
-        this.trajZ.reset(params.L);
-    }
+    reset() {}
 }
 
 // ─── ZVD Input Shaper (layerable pre-filter) ────────────────────────────────
@@ -669,14 +805,14 @@ class FeedbackLinController {
         this.kb = 12;
     }
 
-    computeControl(state, goal, dt) {
+    computeControl(state, ref, dt) {
         const { m_d, m_w, L, g, maxLateral, maxThrust } = this.params;
         const kd = this.kp * 0.83;
 
-        // X-axis feedback linearization
+        // X-axis feedback linearization (include desired velocity in virtual input)
         const phi_x = state[6], phix_dot = state[7];
         const sin_px = Math.sin(phi_x), cos_px = Math.cos(phi_x);
-        const vx = this.kp * (goal[0] - state[0]) - kd * state[1] - this.ka * phi_x - this.kb * phix_dot;
+        const vx = this.kp * (ref.pos[0] - state[0]) + kd * (ref.vel[0] - state[1]) - this.ka * phi_x - this.kb * phix_dot;
         let F_x = (m_d + m_w * sin_px * sin_px) * vx
             - m_w * L * sin_px * phix_dot * phix_dot
             - m_w * g * sin_px * cos_px;
@@ -684,13 +820,13 @@ class FeedbackLinController {
         // Y-axis feedback linearization
         const phi_y = state[8], phiy_dot = state[9];
         const sin_py = Math.sin(phi_y), cos_py = Math.cos(phi_y);
-        const vy = this.kp * (goal[1] - state[2]) - kd * state[3] - this.ka * phi_y - this.kb * phiy_dot;
+        const vy = this.kp * (ref.pos[1] - state[2]) + kd * (ref.vel[1] - state[3]) - this.ka * phi_y - this.kb * phiy_dot;
         let F_y = (m_d + m_w * sin_py * sin_py) * vy
             - m_w * L * sin_py * phiy_dot * phiy_dot
             - m_w * g * sin_py * cos_py;
 
         // Vertical (simple PD)
-        const ez = (goal[2] + L) - state[4];
+        const ez = (ref.pos[2] + L) - state[4];
         let F_z = (m_d + m_w) * g + 50 * ez - 30 * state[5];
 
         F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
@@ -715,13 +851,13 @@ class SlidingModeController {
         this.epsilon = 0.5;
     }
 
-    _computeAxis(posErr, vel, phi, phiDot, params) {
+    _computeAxis(posErr, velErr, phi, phiDot, params) {
         const { m_d, m_w, L, g } = params;
         const beta = this.alpha * 0.375;
 
-        // Sliding surface: s = lambda*posErr + vel + alpha*phi + beta*phiDot
-        // Note: posErr = x - x_des, so for "error toward goal" we use (x - x_des)
-        const s = this.lambda * posErr + vel + this.alpha * phi + beta * phiDot;
+        // Sliding surface: s = lambda*posErr + velErr + alpha*phi + beta*phiDot
+        // posErr = x - x_des, velErr = vel - vel_des
+        const s = this.lambda * posErr + velErr + this.alpha * phi + beta * phiDot;
 
         // Coefficients from linearized dynamics for equivalent control
         // ds/dt = lambda*x_dot + x_ddot + alpha*phi_dot + beta*phi_ddot
@@ -751,18 +887,18 @@ class SlidingModeController {
         return s / this.epsilon;
     }
 
-    computeControl(state, goal, dt) {
+    computeControl(state, ref, dt) {
         const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
 
         let F_x = this._computeAxis(
-            state[0] - goal[0], state[1], state[6], state[7], this.params
+            state[0] - ref.pos[0], state[1] - ref.vel[0], state[6], state[7], this.params
         );
         let F_y = this._computeAxis(
-            state[2] - goal[1], state[3], state[8], state[9], this.params
+            state[2] - ref.pos[1], state[3] - ref.vel[1], state[8], state[9], this.params
         );
 
         // Vertical (simple PD)
-        const ez = (goal[2] + L) - state[4];
+        const ez = (ref.pos[2] + L) - state[4];
         let F_z = (m_d + m_w) * g + 50 * ez - 30 * state[5];
 
         F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
@@ -866,25 +1002,25 @@ class MPCController {
         this._dirty = false;
     }
 
-    computeControl(state, goal, dt) {
+    computeControl(state, ref, dt) {
         if (this._dirty) this._recompute();
 
         const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
         const K_lat = this._K0_lat;
         const K_vert = this._K0_vert;
 
-        // X-axis error
-        const x_err = [state[0] - goal[0], state[1], state[6], state[7]];
+        // X-axis error (include desired velocity)
+        const x_err = [state[0] - ref.pos[0], state[1] - ref.vel[0], state[6], state[7]];
         let F_x = 0;
         for (let i = 0; i < 4; i++) F_x -= matGet(K_lat, 0, i) * x_err[i];
 
         // Y-axis error
-        const y_err = [state[2] - goal[1], state[3], state[8], state[9]];
+        const y_err = [state[2] - ref.pos[1], state[3] - ref.vel[1], state[8], state[9]];
         let F_y = 0;
         for (let i = 0; i < 4; i++) F_y -= matGet(K_lat, 0, i) * y_err[i];
 
         // Z-axis error
-        const z_err = [state[4] - (goal[2] + L), state[5]];
+        const z_err = [state[4] - (ref.pos[2] + L), state[5] - ref.vel[2]];
         let F_z = 0;
         for (let i = 0; i < 2; i++) F_z -= matGet(K_vert, 0, i) * z_err[i];
         F_z += (m_d + m_w) * g;
@@ -959,37 +1095,52 @@ export class Simulation {
 
         // ZVD Input Shaper
         this.zvdShaper = new ZVDShaper(this.params, this.dt);
+
+        // Goal smoother and trajectory state
+        this._refSmoother = new GoalSmoother3D([0, 0, 0], 3.0);
+        this._trajectory = null;
+        this._trajStartTime = 0;
+        this._useTrajectory = false;
     }
 
     step() {
-        // Apply input shaping pre-filter if enabled
-        let goal = this.goal;
-        if (this.inputShaping) {
-            goal = this.zvdShaper.shapeGoal(this.goal, this.params);
+        // Compute reference: trajectory mode or goal mode with smoother
+        let ref;
+        if (this._useTrajectory && this._trajectory) {
+            const tLocal = this.time - this._trajStartTime;
+            ref = this._trajectory.evaluate(tLocal);
+            this.goal = [...ref.pos]; // keep goal in sync for HUD/sliders
+        } else {
+            // Goal mode: optionally apply ZVD, then smooth
+            let goalPos = this.goal;
+            if (this.inputShaping) {
+                goalPos = this.zvdShaper.shapeGoal(this.goal, this.params);
+            }
+            ref = this._refSmoother.update(goalPos, this.dt);
         }
 
         let control;
         switch (this.controllerType) {
             case 'pid':
-                control = this.pid.computeControl(this.state, goal, this.dt);
+                control = this.pid.computeControl(this.state, ref, this.dt);
                 break;
             case 'cascade':
-                control = this.cascade.computeControl(this.state, goal, this.dt);
+                control = this.cascade.computeControl(this.state, ref, this.dt);
                 break;
             case 'flatness':
-                control = this.flatness.computeControl(this.state, goal, this.dt);
+                control = this.flatness.computeControl(this.state, ref, this.dt);
                 break;
             case 'feedbacklin':
-                control = this.feedbacklin.computeControl(this.state, goal, this.dt);
+                control = this.feedbacklin.computeControl(this.state, ref, this.dt);
                 break;
             case 'sliding':
-                control = this.sliding.computeControl(this.state, goal, this.dt);
+                control = this.sliding.computeControl(this.state, ref, this.dt);
                 break;
             case 'mpc':
-                control = this.mpc.computeControl(this.state, goal, this.dt);
+                control = this.mpc.computeControl(this.state, ref, this.dt);
                 break;
             default: // 'lqr'
-                control = computeLqrControl(this.state, goal, this.K_lat, this.K_vert, this.params);
+                control = computeLqrControl(this.state, ref, this.K_lat, this.K_vert, this.params);
                 break;
         }
 
@@ -1034,6 +1185,29 @@ export class Simulation {
 
     setGoal(x, y, z) {
         this.goal = [x, y, z];
+        this._useTrajectory = false;
+        this._trajectory = null;
+    }
+
+    setTrajectory(traj) {
+        this._trajectory = traj;
+        this._trajStartTime = this.time;
+        this._useTrajectory = true;
+    }
+
+    clearTrajectory() {
+        if (this._trajectory && this._useTrajectory) {
+            const t = this.time - this._trajStartTime;
+            const ref = this._trajectory.evaluate(t);
+            this.goal = [...ref.pos];
+            this._refSmoother.reset(ref.pos);
+        }
+        this._trajectory = null;
+        this._useTrajectory = false;
+    }
+
+    setSmootherOmega(omega) {
+        this._refSmoother.setOmega(omega);
     }
 
     setControllerType(type) {
@@ -1086,7 +1260,6 @@ export class Simulation {
                 this.cascade.kd_z = p.kd_inner * 1.5;
                 break;
             case 'flatness':
-                this.flatness.omega = p.omega;
                 this.flatness.kp = p.kp;
                 this.flatness.kd = p.kp * 0.6;
                 this.flatness.kp_phi = p.kp_phi;
@@ -1178,10 +1351,13 @@ export class Simulation {
         this.lastControl = [0, 0, (this.params.m_d + this.params.m_w) * this.params.g];
         this.pid.reset();
         this.cascade.reset();
-        this.flatness.reset(this.params);
+        this.flatness.reset();
         this.feedbacklin.reset();
         this.sliding.reset();
         this.mpc.reset();
         this.zvdShaper.reset(this.params);
+        this._refSmoother.reset([0, 0, 0]);
+        this._trajectory = null;
+        this._useTrajectory = false;
     }
 }
