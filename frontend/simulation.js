@@ -115,23 +115,47 @@ export function clearTrails(trails) {
     }
 }
 
-export function updateScene(sceneObjects, data) {
-    const { lqr, pid, goalMarker, lqrLabel, pidLabel, trails } = sceneObjects;
+export function clearDroneTrails(trails, prefix) {
+    const keys = [prefix + 'Drone', prefix + 'Weight'];
+    for (const key of keys) {
+        if (trails[key]) {
+            trails[key].points.length = 0;
+            trails[key].mesh.count = 0;
+        }
+    }
+}
 
-    const lqrP = updateDroneSystem(lqr, data.lqr.drone, data.lqr.weight, data.lqr.control);
-    const pidP = updateDroneSystem(pid, data.pid.drone, data.pid.weight, data.pid.control);
+function setDroneSystemVisible(system, label, visible) {
+    system.droneGroup.visible = visible;
+    system.rope.visible = visible;
+    system.weight.visible = visible;
+    system.forceArrow.group.visible = system.forceArrow.group.visible && visible;
+    label.visible = visible;
+}
+
+export function updateScene(sceneObjects, data, algoA, algoB) {
+    const { lqr, pid, goalMarker, lqrLabel, pidLabel, trails } = sceneObjects;
+    const lqrOn = algoA !== 'off';
+    const pidOn = algoB !== 'off';
+
+    if (lqrOn) {
+        const lqrP = updateDroneSystem(lqr, data.lqr.drone, data.lqr.weight, data.lqr.control);
+        lqrLabel.position.set(lqrP.dronePos.x, lqrP.dronePos.y + 0.8, lqrP.dronePos.z);
+        pushTrailPoint(trails.lqrDrone, lqrP.dronePos.x, lqrP.dronePos.y, lqrP.dronePos.z);
+        pushTrailPoint(trails.lqrWeight, lqrP.weightPos.x, lqrP.weightPos.y, lqrP.weightPos.z);
+    }
+    setDroneSystemVisible(lqr, lqrLabel, lqrOn);
+
+    if (pidOn) {
+        const pidP = updateDroneSystem(pid, data.pid.drone, data.pid.weight, data.pid.control);
+        pidLabel.position.set(pidP.dronePos.x, pidP.dronePos.y + 0.8, pidP.dronePos.z);
+        pushTrailPoint(trails.pidDrone, pidP.dronePos.x, pidP.dronePos.y, pidP.dronePos.z);
+        pushTrailPoint(trails.pidWeight, pidP.weightPos.x, pidP.weightPos.y, pidP.weightPos.z);
+    }
+    setDroneSystemVisible(pid, pidLabel, pidOn);
 
     const gp = physicsToThree(data.lqr.goal.x, data.lqr.goal.y, data.lqr.goal.z);
     goalMarker.position.set(gp.x, gp.y, gp.z);
-
-    lqrLabel.position.set(lqrP.dronePos.x, lqrP.dronePos.y + 0.8, lqrP.dronePos.z);
-    pidLabel.position.set(pidP.dronePos.x, pidP.dronePos.y + 0.8, pidP.dronePos.z);
-
-    // Push trail points
-    pushTrailPoint(trails.lqrDrone, lqrP.dronePos.x, lqrP.dronePos.y, lqrP.dronePos.z);
-    pushTrailPoint(trails.lqrWeight, lqrP.weightPos.x, lqrP.weightPos.y, lqrP.weightPos.z);
-    pushTrailPoint(trails.pidDrone, pidP.dronePos.x, pidP.dronePos.y, pidP.dronePos.z);
-    pushTrailPoint(trails.pidWeight, pidP.weightPos.x, pidP.weightPos.y, pidP.weightPos.z);
     pushTrailPoint(trails.goal, gp.x, gp.y, gp.z);
 }
 

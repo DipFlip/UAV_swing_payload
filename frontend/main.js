@@ -3,7 +3,7 @@
  */
 
 import { createScene } from './scene.js';
-import { updateScene, updateHUD, setHUDLabels, clearTrails } from './simulation.js';
+import { updateScene, updateHUD, setHUDLabels, clearTrails, clearDroneTrails } from './simulation.js';
 import { ChartPanel } from './charts.js';
 import { Simulation, createSquareTrajectory, createLawnmowerTrajectory } from './sim-engine.js';
 import { autoTune, tuneAll } from './optimizer.js';
@@ -88,7 +88,7 @@ sceneObjects.setOnAnimate((wallDt) => {
 
     if (stepped) {
         const data = { type: 'dual_state', lqr: latestLqr, pid: latestPid };
-        updateScene(sceneObjects, data);
+        updateScene(sceneObjects, data, algoA.value, algoB.value);
         updateHUD(data);
         chartPanel.update(data, prevData);
         prevData = data;
@@ -377,12 +377,18 @@ algoA.addEventListener('change', () => {
     simLqr.setControllerType(algoA.value);
     buildAlgoSliders('params-a', 'a', simLqr, algoA.value);
     updateSwingVisibility(algoA.value, swingA, simLqr);
+    if (algoA.value === 'off') {
+        clearDroneTrails(sceneObjects.trails, 'lqr');
+    }
     syncAlgoLabels();
 });
 algoB.addEventListener('change', () => {
     simPid.setControllerType(algoB.value);
     buildAlgoSliders('params-b', 'b', simPid, algoB.value);
     updateSwingVisibility(algoB.value, swingB, simPid);
+    if (algoB.value === 'off') {
+        clearDroneTrails(sceneObjects.trails, 'pid');
+    }
     syncAlgoLabels();
 });
 
