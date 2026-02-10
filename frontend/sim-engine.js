@@ -585,7 +585,9 @@ class ZVDShaper {
     }
 
     _buildBuffer(params) {
-        const T = 2 * Math.PI * Math.sqrt(params.L / params.g);
+        // Coupled pendulum frequency: omega = sqrt((m_d+m_w)*g / (m_d*L))
+        // Period: T = 2*pi / omega = 2*pi * sqrt(m_d*L / ((m_d+m_w)*g))
+        const T = 2 * Math.PI * Math.sqrt(params.m_d * params.L / ((params.m_d + params.m_w) * params.g));
         this._period = T;
         this._halfIdx = Math.round((T / 2) / this.dt);
         this._fullIdx = Math.round(T / this.dt);
@@ -596,16 +598,16 @@ class ZVDShaper {
         this._head = 0;
         this._len = bufLen;
         this._filled = 0;
-        this._lastL = params.L;
-        this._lastG = params.g;
+        this._lastParams = { L: params.L, g: params.g, m_d: params.m_d, m_w: params.m_w };
         // Pre-smoother: first-order filter with tau = 15% of period
         // Converts step inputs into smooth ramps before ZVD processing
         this._alpha = 1 - Math.exp(-this.dt / (T * 0.15));
     }
 
     shapeGoal(goal, params) {
-        // Detect rope length or gravity change → rebuild buffer
-        if (params.L !== this._lastL || params.g !== this._lastG) {
+        // Detect param change that affects pendulum frequency → rebuild buffer
+        const lp = this._lastParams;
+        if (params.L !== lp.L || params.g !== lp.g || params.m_d !== lp.m_d || params.m_w !== lp.m_w) {
             this._buildBuffer(params);
         }
 
