@@ -96,7 +96,10 @@ function nelderMead(costFn, x0, bounds, opts = {}) {
 
 // ─── Cost Function ──────────────────────────────────────────────────────────
 
-function evaluateController(algoType, paramValues, physicsParams, dt) {
+const DEFAULT_COST_WEIGHTS = { n: 1, wTrack: 1, wSwing: 2, wEffort: 0.001, wSettle: 0.5 };
+
+function evaluateController(algoType, paramValues, physicsParams, dt, costWeights) {
+    const cw = costWeights || DEFAULT_COST_WEIGHTS;
     const sim = new Simulation(algoType);
     sim.dt = dt;
 
@@ -113,12 +116,6 @@ function evaluateController(algoType, paramValues, physicsParams, dt) {
     const L = sim.params.L;
     const g = sim.params.g;
     const totalSteps = 600; // 12 seconds at 50Hz
-
-    // Cost weights
-    const wTrack = 1.0;
-    const wSwing = 2.0;
-    const wEffort = 0.001;
-    const wSettle = 0.5;
 
     let cost = 0;
     let settlingTime = 0;
@@ -148,8 +145,8 @@ function evaluateController(algoType, paramValues, physicsParams, dt) {
         // Control effort (lateral only)
         const effort = ctrl[0] * ctrl[0] + ctrl[1] * ctrl[1];
 
-        // ITAE: time-weighted
-        cost += (wTrack * t * trackErr + wSwing * swingErr + wEffort * effort) * dt;
+        // ITAE generalization: t^n weighting
+        cost += (cw.wTrack * Math.pow(t, cw.n) * trackErr + cw.wSwing * swingErr + cw.wEffort * effort) * dt;
 
         // Settling time: last time error exceeds 5% band
         const posErr = Math.sqrt(trackErr);
@@ -163,21 +160,21 @@ function evaluateController(algoType, paramValues, physicsParams, dt) {
         }
     }
 
-    cost += wSettle * settlingTime;
+    cost += cw.wSettle * settlingTime;
     return cost;
 }
 
 // ─── Evaluate cost for given params (used by tuneAll for "before" measurement) ─
 
-export function evaluateCost(algoType, algoParamDefs, physicsParams, dt) {
+export function evaluateCost(algoType, algoParamDefs, physicsParams, dt, costWeights) {
     const paramObj = {};
     algoParamDefs.forEach(p => { paramObj[p.key] = p.default; });
-    return evaluateController(algoType, paramObj, physicsParams, dt);
+    return evaluateController(algoType, paramObj, physicsParams, dt, costWeights);
 }
 
 // ─── Auto-Tune Wrapper ─────────────────────────────────────────────────────
 
-export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress) {
+export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress, costWeights) {
     // Build x0 and bounds from param definitions (use wide optMin/optMax if available)
     const x0 = algoParamDefs.map(p => p.default);
     const bounds = algoParamDefs.map(p => [p.optMin ?? p.min, p.optMax ?? p.max]);
@@ -185,7 +182,7 @@ export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress)
     const costFn = (paramArray) => {
         const paramObj = {};
         algoParamDefs.forEach((p, i) => { paramObj[p.key] = paramArray[i]; });
-        return evaluateController(algoType, paramObj, physicsParams, dt);
+        return evaluateController(algoType, paramObj, physicsParams, dt, costWeights);
     };
 
     // Run in async chunks to keep UI responsive
@@ -291,7 +288,7 @@ export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress)
 
 // ─── Tune All Algorithms ───────────────────────────────────────────────────
 
-export async function tuneAll(allAlgoParams, physicsParams, dt, onProgress) {
+export async function tuneAll(allAlgoParams, physicsParams, dt, onProgress, costWeights) {
     const algoTypes = Object.keys(allAlgoParams);
     const results = [];
 
@@ -302,12 +299,12 @@ export async function tuneAll(allAlgoParams, physicsParams, dt, onProgress) {
         if (onProgress) onProgress(i / algoTypes.length, algoType);
 
         // Evaluate cost with current defaults (before)
-        const beforeCost = evaluateCost(algoType, paramDefs, physicsParams, dt);
+        const beforeCost = evaluateCost(algoType, paramDefs, physicsParams, dt, costWeights);
 
         // Run optimizer
         const result = await autoTune(algoType, paramDefs, physicsParams, dt, (pct) => {
             if (onProgress) onProgress((i + pct) / algoTypes.length, algoType);
-        });
+        }, costWeights);
 
         results.push({
             algoType,

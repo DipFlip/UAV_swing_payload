@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
-    <link rel="stylesheet" href="style.css?v=3.2">
+    <link rel="stylesheet" href="style.css?v=3.3">
 </head>
 <body>
     <div id="container">
@@ -19,7 +19,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v3.2</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v3.3</div>
             </div>
         </div>
 
@@ -120,6 +120,45 @@
             </div>
         </div>
 
+        <div id="tune-config" class="tune-modal hidden">
+            <div class="tune-modal-content">
+                <div class="tune-modal-header">
+                    <span>Tuning Objective</span>
+                    <button id="tune-config-close">&times;</button>
+                </div>
+                <div id="tune-config-body">
+                    <div class="tune-config-row">
+                        <label>Time preference (n): <span id="tc-n-val">1</span></label>
+                        <div class="tune-config-desc">0 = all errors equal, 1 = standard ITAE, 2 = fast convergence at any cost</div>
+                        <input type="range" id="tc-n" min="0" max="2" step="0.1" value="1">
+                    </div>
+                    <div class="tune-config-row">
+                        <label>Tracking: <span id="tc-track-val">1</span></label>
+                        <div class="tune-config-desc">Position error weight. Higher = reach target faster</div>
+                        <input type="range" id="tc-track" min="0.1" max="5" step="0.1" value="1">
+                    </div>
+                    <div class="tune-config-row">
+                        <label>Swing penalty: <span id="tc-swing-val">2</span></label>
+                        <div class="tune-config-desc">Pendulum angle penalty. Higher = smoother payload</div>
+                        <input type="range" id="tc-swing" min="0.1" max="20" step="0.1" value="2">
+                    </div>
+                    <div class="tune-config-row">
+                        <label>Effort: <span id="tc-effort-val">0.001</span></label>
+                        <div class="tune-config-desc">Control force penalty. Higher = gentler forces</div>
+                        <input type="range" id="tc-effort" min="0" max="0.05" step="0.001" value="0.001">
+                    </div>
+                    <div class="tune-config-row">
+                        <label>Settling: <span id="tc-settle-val">0.5</span></label>
+                        <div class="tune-config-desc">Penalty for time outside 5% band</div>
+                        <input type="range" id="tc-settle" min="0" max="5" step="0.1" value="0.5">
+                    </div>
+                </div>
+                <div class="tune-config-footer">
+                    <button id="tune-config-start">Start Tuning</button>
+                </div>
+            </div>
+        </div>
+
         <div id="tune-modal" class="tune-modal hidden">
             <div class="tune-modal-content">
                 <div class="tune-modal-header">
@@ -155,6 +194,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=3.2"></script>
+    <script type="module" src="main.js?v=3.3"></script>
 </body>
 </html>

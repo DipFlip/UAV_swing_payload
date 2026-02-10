@@ -448,6 +448,97 @@ h3.collapsible:hover {
     border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Tune config modal sliders */
+.tune-config-row {
+    margin-bottom: 10px;
+    padding: 0 16px;
+}
+
+.tune-config-row:first-child {
+    margin-top: 10px;
+}
+
+.tune-config-row label {
+    font-size: 12px;
+    display: flex;
+    gap: 4px;
+}
+
+.tune-config-row label span {
+    color: #00d4ff;
+    min-width: 36px;
+}
+
+.tune-config-desc {
+    font-size: 10px;
+    color: #888;
+    margin-bottom: 2px;
+}
+
+.tune-config-row input[type="range"] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+    height: 22px;
+}
+
+.tune-config-row input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    background: linear-gradient(to right, #005577, #00aadd);
+    border-radius: 3px;
+}
+
+.tune-config-row input[type="range"]::-moz-range-track {
+    height: 6px;
+    background: linear-gradient(to right, #005577, #00aadd);
+    border-radius: 3px;
+    border: none;
+}
+
+.tune-config-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #00d4ff;
+    cursor: pointer;
+    margin-top: -6px;
+}
+
+.tune-config-row input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #00d4ff;
+    border: none;
+    cursor: pointer;
+}
+
+.tune-config-footer {
+    padding: 10px 16px;
+    text-align: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#tune-config-start {
+    background: none;
+    border: 1px solid #00d4ff;
+    color: #00d4ff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 5px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#tune-config-start:hover {
+    background: rgba(0, 212, 255, 0.15);
+}
+
 /* Algorithm info panel (bottom-left) */
 #algo-info-panel {
     position: absolute;

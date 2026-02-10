@@ -390,47 +390,98 @@ document.getElementById('reset-b').addEventListener('click', () => {
     buildAlgoSliders('params-b', 'b', simPid, algoB.value);
 });
 
+// --- Tune config modal ---
+const tuneConfigModal = document.getElementById('tune-config');
+const tuneConfigSliders = {
+    n: document.getElementById('tc-n'),
+    wTrack: document.getElementById('tc-track'),
+    wSwing: document.getElementById('tc-swing'),
+    wEffort: document.getElementById('tc-effort'),
+    wSettle: document.getElementById('tc-settle'),
+};
+const tuneConfigValSpans = {
+    n: document.getElementById('tc-n-val'),
+    wTrack: document.getElementById('tc-track-val'),
+    wSwing: document.getElementById('tc-swing-val'),
+    wEffort: document.getElementById('tc-effort-val'),
+    wSettle: document.getElementById('tc-settle-val'),
+};
+
+// Wire up live value display for config sliders
+for (const key of Object.keys(tuneConfigSliders)) {
+    tuneConfigSliders[key].addEventListener('input', () => {
+        tuneConfigValSpans[key].textContent = tuneConfigSliders[key].value;
+    });
+}
+
+let tuneConfigCallback = null;
+
+function showTuneConfig(onStart) {
+    tuneConfigCallback = onStart;
+    tuneConfigModal.classList.remove('hidden');
+}
+
+document.getElementById('tune-config-close').addEventListener('click', () => {
+    tuneConfigModal.classList.add('hidden');
+    tuneConfigCallback = null;
+});
+
+document.getElementById('tune-config-start').addEventListener('click', () => {
+    const costWeights = {
+        n: parseFloat(tuneConfigSliders.n.value),
+        wTrack: parseFloat(tuneConfigSliders.wTrack.value),
+        wSwing: parseFloat(tuneConfigSliders.wSwing.value),
+        wEffort: parseFloat(tuneConfigSliders.wEffort.value),
+        wSettle: parseFloat(tuneConfigSliders.wSettle.value),
+    };
+    tuneConfigModal.classList.add('hidden');
+    if (tuneConfigCallback) tuneConfigCallback(costWeights);
+    tuneConfigCallback = null;
+});
+
 // --- Auto-tune buttons ---
 const tuneA = document.getElementById('tune-a');
 const tuneB = document.getElementById('tune-b');
 
 tuneA.addEventListener('click', () => {
-    const algoType = algoA.value;
-    tuneA.disabled = true;
-    tuneA.textContent = 'Tuning...';
-    autoTune(algoType, ALGO_PARAMS[algoType], simLqr.params, SIM_DT, (pct) => {
-        tuneA.textContent = `Tuning ${Math.round(pct * 100)}%`;
-    }).then(result => {
-        // Save to localStorage, update defaults, expand slider ranges
-        saveTunedParams(algoType, result.params);
-        ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
-        expandSliderRanges(algoType, result.params);
-        droneParamValues.a[algoType] = result.params;
-        droneParamValues.b[algoType] = { ...result.params };
-        buildAlgoSliders('params-a', 'a', simLqr, algoType);
-        if (algoB.value === algoType) buildAlgoSliders('params-b', 'b', simPid, algoType);
-        tuneA.disabled = false;
-        tuneA.textContent = 'Auto-tune';
+    showTuneConfig((costWeights) => {
+        const algoType = algoA.value;
+        tuneA.disabled = true;
+        tuneA.textContent = 'Tuning...';
+        autoTune(algoType, ALGO_PARAMS[algoType], simLqr.params, SIM_DT, (pct) => {
+            tuneA.textContent = `Tuning ${Math.round(pct * 100)}%`;
+        }, costWeights).then(result => {
+            saveTunedParams(algoType, result.params);
+            ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
+            expandSliderRanges(algoType, result.params);
+            droneParamValues.a[algoType] = result.params;
+            droneParamValues.b[algoType] = { ...result.params };
+            buildAlgoSliders('params-a', 'a', simLqr, algoType);
+            if (algoB.value === algoType) buildAlgoSliders('params-b', 'b', simPid, algoType);
+            tuneA.disabled = false;
+            tuneA.textContent = 'Auto-tune';
+        });
     });
 });
 
 tuneB.addEventListener('click', () => {
-    const algoType = algoB.value;
-    tuneB.disabled = true;
-    tuneB.textContent = 'Tuning...';
-    autoTune(algoType, ALGO_PARAMS[algoType], simPid.params, SIM_DT, (pct) => {
-        tuneB.textContent = `Tuning ${Math.round(pct * 100)}%`;
-    }).then(result => {
-        // Save to localStorage, update defaults, expand slider ranges
-        saveTunedParams(algoType, result.params);
-        ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
-        expandSliderRanges(algoType, result.params);
-        droneParamValues.b[algoType] = result.params;
-        droneParamValues.a[algoType] = { ...result.params };
-        buildAlgoSliders('params-b', 'b', simPid, algoType);
-        if (algoA.value === algoType) buildAlgoSliders('params-a', 'a', simLqr, algoType);
-        tuneB.disabled = false;
-        tuneB.textContent = 'Auto-tune';
+    showTuneConfig((costWeights) => {
+        const algoType = algoB.value;
+        tuneB.disabled = true;
+        tuneB.textContent = 'Tuning...';
+        autoTune(algoType, ALGO_PARAMS[algoType], simPid.params, SIM_DT, (pct) => {
+            tuneB.textContent = `Tuning ${Math.round(pct * 100)}%`;
+        }, costWeights).then(result => {
+            saveTunedParams(algoType, result.params);
+            ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
+            expandSliderRanges(algoType, result.params);
+            droneParamValues.b[algoType] = result.params;
+            droneParamValues.a[algoType] = { ...result.params };
+            buildAlgoSliders('params-b', 'b', simPid, algoType);
+            if (algoA.value === algoType) buildAlgoSliders('params-a', 'a', simLqr, algoType);
+            tuneB.disabled = false;
+            tuneB.textContent = 'Auto-tune';
+        });
     });
 });
 
@@ -510,34 +561,34 @@ btnPattern.addEventListener('click', () => {
 // --- Tune All handler ---
 const tuneAllBtn = document.getElementById('tune-all');
 tuneAllBtn.addEventListener('click', () => {
-    tuneAllBtn.disabled = true;
-    tuneAllBtn.textContent = 'Tuning...';
+    showTuneConfig((costWeights) => {
+        tuneAllBtn.disabled = true;
+        tuneAllBtn.textContent = 'Tuning...';
 
-    tuneAll(ALGO_PARAMS, simLqr.params, SIM_DT, (pct, algoType) => {
-        const label = ALGO_LABELS[algoType] || algoType;
-        const idx = Object.keys(ALGO_PARAMS).indexOf(algoType) + 1;
-        const total = Object.keys(ALGO_PARAMS).length;
-        tuneAllBtn.textContent = `Tuning ${label} (${idx}/${total}) ${Math.round(pct * 100)}%`;
-    }).then(results => {
-        // Save all results to localStorage, update defaults, expand slider ranges
-        for (const r of results) {
-            saveTunedParams(r.algoType, r.params);
-            ALGO_PARAMS[r.algoType].forEach(p => {
-                if (r.params[p.key] !== undefined) p.default = r.params[p.key];
-            });
-            expandSliderRanges(r.algoType, r.params);
-            droneParamValues.a[r.algoType] = { ...r.params };
-            droneParamValues.b[r.algoType] = { ...r.params };
-        }
+        tuneAll(ALGO_PARAMS, simLqr.params, SIM_DT, (pct, algoType) => {
+            const label = ALGO_LABELS[algoType] || algoType;
+            const idx = Object.keys(ALGO_PARAMS).indexOf(algoType) + 1;
+            const total = Object.keys(ALGO_PARAMS).length;
+            tuneAllBtn.textContent = `Tuning ${label} (${idx}/${total}) ${Math.round(pct * 100)}%`;
+        }, costWeights).then(results => {
+            for (const r of results) {
+                saveTunedParams(r.algoType, r.params);
+                ALGO_PARAMS[r.algoType].forEach(p => {
+                    if (r.params[p.key] !== undefined) p.default = r.params[p.key];
+                });
+                expandSliderRanges(r.algoType, r.params);
+                droneParamValues.a[r.algoType] = { ...r.params };
+                droneParamValues.b[r.algoType] = { ...r.params };
+            }
 
-        // Rebuild current sliders for both drones
-        buildAlgoSliders('params-a', 'a', simLqr, algoA.value);
-        buildAlgoSliders('params-b', 'b', simPid, algoB.value);
+            buildAlgoSliders('params-a', 'a', simLqr, algoA.value);
+            buildAlgoSliders('params-b', 'b', simPid, algoB.value);
 
-        tuneAllBtn.disabled = false;
-        tuneAllBtn.textContent = 'Tune All Algorithms';
+            tuneAllBtn.disabled = false;
+            tuneAllBtn.textContent = 'Tune All Algorithms';
 
-        showTuneResults(results, simLqr.params);
+            showTuneResults(results, simLqr.params);
+        });
     });
 });
 
