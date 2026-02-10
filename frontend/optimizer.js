@@ -167,6 +167,14 @@ function evaluateController(algoType, paramValues, physicsParams, dt) {
     return cost;
 }
 
+// ─── Evaluate cost for given params (used by tuneAll for "before" measurement) ─
+
+export function evaluateCost(algoType, algoParamDefs, physicsParams, dt) {
+    const paramObj = {};
+    algoParamDefs.forEach(p => { paramObj[p.key] = p.default; });
+    return evaluateController(algoType, paramObj, physicsParams, dt);
+}
+
 // ─── Auto-Tune Wrapper ─────────────────────────────────────────────────────
 
 export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress) {
@@ -279,4 +287,36 @@ export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress)
 
         setTimeout(runBatch, 0);
     });
+}
+
+// ─── Tune All Algorithms ───────────────────────────────────────────────────
+
+export async function tuneAll(allAlgoParams, physicsParams, dt, onProgress) {
+    const algoTypes = Object.keys(allAlgoParams);
+    const results = [];
+
+    for (let i = 0; i < algoTypes.length; i++) {
+        const algoType = algoTypes[i];
+        const paramDefs = allAlgoParams[algoType];
+
+        if (onProgress) onProgress(i / algoTypes.length, algoType);
+
+        // Evaluate cost with current defaults (before)
+        const beforeCost = evaluateCost(algoType, paramDefs, physicsParams, dt);
+
+        // Run optimizer
+        const result = await autoTune(algoType, paramDefs, physicsParams, dt, (pct) => {
+            if (onProgress) onProgress((i + pct) / algoTypes.length, algoType);
+        });
+
+        results.push({
+            algoType,
+            beforeCost,
+            afterCost: result.cost,
+            params: result.params,
+        });
+    }
+
+    if (onProgress) onProgress(1, 'done');
+    return results;
 }

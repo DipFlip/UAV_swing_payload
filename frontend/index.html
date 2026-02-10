@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
-    <link rel="stylesheet" href="style.css?v=2.9">
+    <link rel="stylesheet" href="style.css?v=3.0">
 </head>
 <body>
     <div id="container">
@@ -19,7 +19,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v2.9</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v3.0</div>
             </div>
         </div>
 
@@ -111,11 +111,22 @@
                     <button id="reset-b" class="reset-params-btn">Reset to default</button>
                     <button id="tune-b" class="tune-btn">Auto-tune</button>
                 </div>
+                <button id="tune-all" class="tune-all-btn">Tune All Algorithms</button>
             </div>
             <div class="button-group">
                 <button id="btn-pause">Pause</button>
                 <button id="btn-pattern">Square</button>
                 <button id="btn-reset">Reset</button>
+            </div>
+        </div>
+
+        <div id="tune-modal" class="tune-modal hidden">
+            <div class="tune-modal-content">
+                <div class="tune-modal-header">
+                    <span>Auto-Tune Results</span>
+                    <button id="tune-modal-close">&times;</button>
+                </div>
+                <div id="tune-modal-body"></div>
             </div>
         </div>
 
@@ -144,6 +155,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=2.9"></script>
+    <script type="module" src="main.js?v=3.0"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@ import { createScene } from './scene.js';
 import { updateScene, updateHUD, setHUDLabels, clearTrails } from './simulation.js';
 import { ChartPanel } from './charts.js';
 import { Simulation } from './sim-engine.js';
-import { autoTune } from './optimizer.js';
+import { autoTune, tuneAll } from './optimizer.js';
 
 const canvas = document.getElementById('canvas');
 const sceneObjects = createScene(canvas);
@@ -210,6 +210,36 @@ const ALGO_PARAMS = {
     ],
 };
 
+// --- localStorage persistence for tuned params ---
+const LS_KEY = 'dronehangsim_tuned';
+
+function loadSavedParams() {
+    try {
+        const raw = localStorage.getItem(LS_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+}
+
+function saveTunedParams(algoType, params) {
+    const saved = loadSavedParams();
+    saved[algoType] = params;
+    localStorage.setItem(LS_KEY, JSON.stringify(saved));
+}
+
+// On startup: overwrite ALGO_PARAMS defaults with any saved tuned values
+(function applySavedDefaults() {
+    const saved = loadSavedParams();
+    for (const [algoType, params] of Object.entries(saved)) {
+        const defs = ALGO_PARAMS[algoType];
+        if (!defs) continue;
+        for (const p of defs) {
+            if (params[p.key] !== undefined) {
+                p.default = params[p.key];
+            }
+        }
+    }
+})();
+
 // Stored parameter values per drone per algorithm (persists across switches)
 const droneParamValues = {
     a: {}, b: {},
@@ -355,8 +385,13 @@ tuneA.addEventListener('click', () => {
     autoTune(algoType, ALGO_PARAMS[algoType], simLqr.params, SIM_DT, (pct) => {
         tuneA.textContent = `Tuning ${Math.round(pct * 100)}%`;
     }).then(result => {
+        // Save to localStorage and update defaults
+        saveTunedParams(algoType, result.params);
+        ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
         droneParamValues.a[algoType] = result.params;
+        droneParamValues.b[algoType] = { ...result.params };
         buildAlgoSliders('params-a', 'a', simLqr, algoType);
+        if (algoB.value === algoType) buildAlgoSliders('params-b', 'b', simPid, algoType);
         tuneA.disabled = false;
         tuneA.textContent = 'Auto-tune';
     });
@@ -369,8 +404,13 @@ tuneB.addEventListener('click', () => {
     autoTune(algoType, ALGO_PARAMS[algoType], simPid.params, SIM_DT, (pct) => {
         tuneB.textContent = `Tuning ${Math.round(pct * 100)}%`;
     }).then(result => {
+        // Save to localStorage and update defaults
+        saveTunedParams(algoType, result.params);
+        ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
         droneParamValues.b[algoType] = result.params;
+        droneParamValues.a[algoType] = { ...result.params };
         buildAlgoSliders('params-b', 'b', simPid, algoType);
+        if (algoA.value === algoType) buildAlgoSliders('params-a', 'a', simLqr, algoType);
         tuneB.disabled = false;
         tuneB.textContent = 'Auto-tune';
     });
@@ -447,6 +487,67 @@ function stopPattern() {
 btnPattern.addEventListener('click', () => {
     if (patternActive) stopPattern();
     else startPattern();
+});
+
+// --- Tune All handler ---
+const tuneAllBtn = document.getElementById('tune-all');
+tuneAllBtn.addEventListener('click', () => {
+    tuneAllBtn.disabled = true;
+    tuneAllBtn.textContent = 'Tuning...';
+
+    tuneAll(ALGO_PARAMS, simLqr.params, SIM_DT, (pct, algoType) => {
+        const label = ALGO_LABELS[algoType] || algoType;
+        const idx = Object.keys(ALGO_PARAMS).indexOf(algoType) + 1;
+        const total = Object.keys(ALGO_PARAMS).length;
+        tuneAllBtn.textContent = `Tuning ${label} (${idx}/${total}) ${Math.round(pct * 100)}%`;
+    }).then(results => {
+        // Save all results to localStorage, update defaults, update drone param values
+        for (const r of results) {
+            saveTunedParams(r.algoType, r.params);
+            ALGO_PARAMS[r.algoType].forEach(p => {
+                if (r.params[p.key] !== undefined) p.default = r.params[p.key];
+            });
+            droneParamValues.a[r.algoType] = { ...r.params };
+            droneParamValues.b[r.algoType] = { ...r.params };
+        }
+
+        // Rebuild current sliders for both drones
+        buildAlgoSliders('params-a', 'a', simLqr, algoA.value);
+        buildAlgoSliders('params-b', 'b', simPid, algoB.value);
+
+        tuneAllBtn.disabled = false;
+        tuneAllBtn.textContent = 'Tune All Algorithms';
+
+        showTuneResults(results, simLqr.params);
+    });
+});
+
+// --- Results modal ---
+function showTuneResults(results, physicsParams) {
+    const modal = document.getElementById('tune-modal');
+    const body = document.getElementById('tune-modal-body');
+
+    let html = '<table class="tune-results-table"><thead><tr><th>Algorithm</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>';
+
+    for (const r of results) {
+        const label = ALGO_LABELS[r.algoType] || r.algoType;
+        const before = r.beforeCost.toFixed(1);
+        const after = r.afterCost.toFixed(1);
+        const changePct = r.beforeCost > 0 ? ((r.afterCost - r.beforeCost) / r.beforeCost * 100) : 0;
+        const changeStr = (changePct <= 0 ? '' : '+') + changePct.toFixed(1) + '%';
+        const changeColor = changePct <= 0 ? '#44ff88' : '#ff4444';
+        html += `<tr><td>${label}</td><td>${before}</td><td>${after}</td><td style="color:${changeColor}">${changeStr}</td></tr>`;
+    }
+
+    html += '</tbody></table>';
+    html += `<div class="tune-physics-note">Physics: m<sub>d</sub>=${physicsParams.m_d}kg, m<sub>w</sub>=${physicsParams.m_w}kg, L=${physicsParams.L}m, F<sub>max</sub>=${physicsParams.maxLateral}N</div>`;
+
+    body.innerHTML = html;
+    modal.classList.remove('hidden');
+}
+
+document.getElementById('tune-modal-close').addEventListener('click', () => {
+    document.getElementById('tune-modal').classList.add('hidden');
 });
 
 // --- UI Buttons ---

@@ -338,6 +338,116 @@ h3.collapsible:hover {
     cursor: default;
 }
 
+/* Tune All button */
+.tune-all-btn {
+    display: block;
+    width: 100%;
+    margin: 6px 0 2px;
+    padding: 4px 12px;
+    background: none;
+    border: 1px solid #00d4ff;
+    color: #00d4ff;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.tune-all-btn:hover {
+    background: rgba(0, 212, 255, 0.15);
+}
+
+.tune-all-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Tune results modal */
+.tune-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.tune-modal.hidden {
+    display: none;
+}
+
+.tune-modal-content {
+    background: #1a1a2e;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+    min-width: 380px;
+    max-width: 90vw;
+}
+
+.tune-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tune-modal-header span {
+    color: #00d4ff;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.tune-modal-header button {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+}
+
+.tune-modal-header button:hover {
+    color: #fff;
+}
+
+.tune-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+}
+
+.tune-results-table th {
+    padding: 6px 12px;
+    text-align: left;
+    color: #888;
+    font-size: 11px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tune-results-table td {
+    padding: 5px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tune-results-table tr:last-child td {
+    border-bottom: none;
+}
+
+.tune-physics-note {
+    padding: 8px 12px;
+    color: #666;
+    font-size: 11px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 /* Algorithm info panel (bottom-left) */
 #algo-info-panel {
     position: absolute;
