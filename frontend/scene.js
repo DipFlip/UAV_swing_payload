@@ -136,6 +136,79 @@ export function createScene(canvas) {
     // --- Drone B (orange) — dark body, bright payload ---
     const pid = createDroneSystem(scene, 0xcc5500, 0xffaa33, 0xff8800, 0xff6644, 0xffbb44);
 
+    // --- Wind streamline particles ---
+    const WIND_PARTICLE_COUNT = 40;
+    const WIND_FIELD_SIZE = 20; // half-extent of particle spawn area
+    const WIND_LINE_LEN = 1.5;
+
+    const windParticles = [];
+    const windGroup = new THREE.Group();
+    windGroup.visible = false;
+    scene.add(windGroup);
+
+    const windLineMat = new THREE.LineBasicMaterial({
+        color: 0xaaddff,
+        transparent: true,
+        opacity: 0.4,
+    });
+
+    for (let i = 0; i < WIND_PARTICLE_COUNT; i++) {
+        const geo = new THREE.BufferGeometry();
+        const verts = new Float32Array(6); // 2 points x 3 coords
+        geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        const line = new THREE.Line(geo, windLineMat);
+        windGroup.add(line);
+        windParticles.push({
+            line,
+            // Random position in the field (Three.js coords: x, y=height, z)
+            x: (Math.random() - 0.5) * WIND_FIELD_SIZE * 2,
+            y: 1 + Math.random() * 10,
+            z: (Math.random() - 0.5) * WIND_FIELD_SIZE * 2,
+            phase: Math.random(), // stagger animation
+        });
+    }
+
+    function updateWind(windStrength, windDirRad, dt) {
+        if (windStrength < 0.1) {
+            windGroup.visible = false;
+            return;
+        }
+        windGroup.visible = true;
+
+        // Wind direction in Three.js coords: physics (cos,sin,0) → Three.js (cos,0,sin)
+        const dx = Math.cos(windDirRad);
+        const dz = Math.sin(windDirRad);
+        const speed = windStrength * 0.3; // visual speed scaling
+
+        for (const p of windParticles) {
+            p.x += dx * speed * dt;
+            p.z += dz * speed * dt;
+
+            // Wrap particles: if they leave the field, respawn on upwind side
+            const dotPos = p.x * dx + p.z * dz;
+            if (dotPos > WIND_FIELD_SIZE) {
+                // Respawn on upwind side
+                p.x -= dx * WIND_FIELD_SIZE * 2;
+                p.z -= dz * WIND_FIELD_SIZE * 2;
+                // Randomize perpendicular position
+                p.x += (-dz) * (Math.random() - 0.5) * WIND_FIELD_SIZE * 2;
+                p.z += dx * (Math.random() - 0.5) * WIND_FIELD_SIZE * 2;
+                p.y = 1 + Math.random() * 10;
+            }
+
+            // Line tail trails behind particle
+            const tailLen = WIND_LINE_LEN * Math.min(windStrength / 10, 1.5);
+            const verts = p.line.geometry.attributes.position.array;
+            verts[0] = p.x - dx * tailLen;
+            verts[1] = p.y;
+            verts[2] = p.z - dz * tailLen;
+            verts[3] = p.x;
+            verts[4] = p.y;
+            verts[5] = p.z;
+            p.line.geometry.attributes.position.needsUpdate = true;
+        }
+    }
+
     // --- Goal marker ---
     const goalGeo = new THREE.SphereGeometry(0.4, 16, 16);
     const goalMat = new THREE.MeshStandardMaterial({
@@ -287,6 +360,7 @@ export function createScene(canvas) {
         trails,
         updatePatternPreview,
         hidePatternPreview,
+        updateWind,
         setOnAnimate(fn) { onAnimate = fn; },
     };
 }

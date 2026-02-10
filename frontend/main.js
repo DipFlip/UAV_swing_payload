@@ -100,6 +100,10 @@ sceneObjects.setOnAnimate((wallDt) => {
             sliderY.value = g[1]; yVal.textContent = g[1].toFixed(1);
             sliderZ.value = g[2]; zVal.textContent = g[2].toFixed(1);
         }
+
+        // Update wind visualization
+        const wind = simLqr.lastWind;
+        sceneObjects.updateWind(wind.strength, wind.dir, dt);
     }
 });
 
@@ -184,20 +188,22 @@ sliderFmax.addEventListener('input', () => { fmaxVal.textContent = sliderFmax.va
 // --- Wind sliders ---
 const sliderWindStr = document.getElementById('slider-wind-str');
 const windStrVal = document.getElementById('wind-str-val');
+const sliderWindStd = document.getElementById('slider-wind-std');
+const windStdVal = document.getElementById('wind-std-val');
 const sliderWindDir = document.getElementById('slider-wind-dir');
 const windDirVal = document.getElementById('wind-dir-val');
 
 function sendWind() {
-    const strength = parseFloat(sliderWindStr.value);
+    const windMean = parseFloat(sliderWindStr.value);
+    const windStddev = parseFloat(sliderWindStd.value);
     const dirDeg = parseFloat(sliderWindDir.value);
-    const dirRad = dirDeg * Math.PI / 180;
-    const windX = strength * Math.cos(dirRad);
-    const windY = strength * Math.sin(dirRad);
-    simLqr.setParams({ windX, windY });
-    simPid.setParams({ windX, windY });
+    const windDir = dirDeg * Math.PI / 180;
+    simLqr.setParams({ windMean, windStddev, windDir });
+    simPid.setParams({ windMean, windStddev, windDir });
 }
 
 sliderWindStr.addEventListener('input', () => { windStrVal.textContent = sliderWindStr.value; sendWind(); });
+sliderWindStd.addEventListener('input', () => { windStdVal.textContent = sliderWindStd.value; sendWind(); });
 sliderWindDir.addEventListener('input', () => { windDirVal.textContent = sliderWindDir.value; sendWind(); });
 
 // --- Status ---

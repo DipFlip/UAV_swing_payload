@@ -209,8 +209,11 @@ const DEFAULT_PARAMS = {
     g: 9.81,           // gravity (m/s^2)
     maxLateral: 140,   // max lateral force per axis (N)
     maxThrust: 350,    // max vertical thrust (N)
-    windX: 0,          // wind force on payload, x-axis (N)
-    windY: 0,          // wind force on payload, y-axis (N)
+    windMean: 0,        // mean wind force on payload (N)
+    windStddev: 0,      // wind force standard deviation (N)
+    windDir: 0,         // wind direction (radians, 0 = +x)
+    windX: 0,           // instantaneous wind x-component (computed)
+    windY: 0,           // instantaneous wind y-component (computed)
 };
 
 function solve2x2(a11, a12, a21, a22, b1, b2) {
@@ -1186,9 +1189,32 @@ export class Simulation {
         this._trajectory = null;
         this._trajStartTime = 0;
         this._useTrajectory = false;
+
+        // Integral correction for disturbance rejection (wind, etc.)
+        this._payloadIntegral = [0, 0];
+
+        // Wind state for visualization
+        this.lastWind = { strength: 0, dir: 0 };
+    }
+
+    _updateWind() {
+        const { windMean, windStddev, windDir } = this.params;
+        let strength = windMean;
+        if (windStddev > 0) {
+            // Box-Muller transform for Gaussian noise
+            const u1 = Math.random();
+            const u2 = Math.random();
+            const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
+            strength = Math.max(0, windMean + windStddev * z);
+        }
+        this.params.windX = strength * Math.cos(windDir);
+        this.params.windY = strength * Math.sin(windDir);
+        this.lastWind = { strength, dir: windDir };
     }
 
     step() {
+        this._updateWind();
+
         // Compute reference: trajectory mode or goal mode with smoother
         let ref;
         if (this._useTrajectory && this._trajectory) {
@@ -1202,6 +1228,21 @@ export class Simulation {
                 goalPos = this.zvdShaper.shapeGoal(this.goal, this.params);
             }
             ref = this._refSmoother.update(goalPos, this.dt);
+        }
+
+        // Integral correction: offset ref so controllers compensate for
+        // constant disturbances (wind) that push the payload off-goal.
+        // Accumulates payload position error and biases the reference upwind.
+        if (this.controllerType !== 'off') {
+            const w = weightPosition(this.state, this.params.L);
+            const ki = 0.3;
+            const maxInt = 5.0;
+            this._payloadIntegral[0] += (ref.pos[0] - w.x) * this.dt * ki;
+            this._payloadIntegral[1] += (ref.pos[1] - w.y) * this.dt * ki;
+            this._payloadIntegral[0] = Math.max(-maxInt, Math.min(maxInt, this._payloadIntegral[0]));
+            this._payloadIntegral[1] = Math.max(-maxInt, Math.min(maxInt, this._payloadIntegral[1]));
+            ref.pos[0] += this._payloadIntegral[0];
+            ref.pos[1] += this._payloadIntegral[1];
         }
 
         let control;
@@ -1275,6 +1316,7 @@ export class Simulation {
         this.goal = [x, y, z];
         this._useTrajectory = false;
         this._trajectory = null;
+        this._payloadIntegral = [0, 0];
     }
 
     setTrajectory(traj) {
@@ -1447,5 +1489,6 @@ export class Simulation {
         this._refSmoother.reset([0, 0, 0]);
         this._trajectory = null;
         this._useTrajectory = false;
+        this._payloadIntegral = [0, 0];
     }
 }

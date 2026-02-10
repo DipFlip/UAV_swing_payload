@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
     <link rel="icon" href="favicon.ico" type="image/x-icon">
-    <link rel="stylesheet" href="style.css?v=4.5">
+    <link rel="stylesheet" href="style.css?v=4.6">
 </head>
 <body>
     <div id="container">
@@ -20,7 +20,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v4.5</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v4.6</div>
             </div>
         </div>
 
@@ -76,8 +76,12 @@
                     <input type="range" id="slider-timescale" min="5" max="100" step="5" value="100">
                 </div>
                 <div class="slider-group">
-                    <label>Wind: <span id="wind-str-val">0</span> N</label>
+                    <label>Wind mean: <span id="wind-str-val">0</span> N</label>
                     <input type="range" id="slider-wind-str" min="0" max="50" step="1" value="0">
+                </div>
+                <div class="slider-group">
+                    <label>Wind &sigma;: <span id="wind-std-val">0</span> N</label>
+                    <input type="range" id="slider-wind-std" min="0" max="20" step="1" value="0">
                 </div>
                 <div class="slider-group">
                     <label>Wind dir: <span id="wind-dir-val">0</span>&deg;</label>
@@ -213,6 +217,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=4.5"></script>
+    <script type="module" src="main.js?v=4.6"></script>
 </body>
 </html>
