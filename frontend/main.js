@@ -194,10 +194,6 @@ const sliderWindDir = document.getElementById('slider-wind-dir');
 const windDirVal = document.getElementById('wind-dir-val');
 const sliderWindWander = document.getElementById('slider-wind-wander');
 const windWanderVal = document.getElementById('wind-wander-val');
-const sliderWindKi = document.getElementById('slider-wind-ki');
-const windKiVal = document.getElementById('wind-ki-val');
-const sliderWindIntmax = document.getElementById('slider-wind-intmax');
-const windIntmaxVal = document.getElementById('wind-intmax-val');
 
 function sendWind() {
     const windMean = parseFloat(sliderWindStr.value);
@@ -206,18 +202,14 @@ function sendWind() {
     const windDir = dirDeg * Math.PI / 180;
     const wanderDeg = parseFloat(sliderWindWander.value);
     const windWander = wanderDeg * Math.PI / 180;
-    const windKi = parseFloat(sliderWindKi.value);
-    const windIntMax = parseFloat(sliderWindIntmax.value);
-    simLqr.setParams({ windMean, windStddev, windDir, windWander, windKi, windIntMax });
-    simPid.setParams({ windMean, windStddev, windDir, windWander, windKi, windIntMax });
+    simLqr.setParams({ windMean, windStddev, windDir, windWander });
+    simPid.setParams({ windMean, windStddev, windDir, windWander });
 }
 
 sliderWindStr.addEventListener('input', () => { windStrVal.textContent = sliderWindStr.value; sendWind(); });
 sliderWindStd.addEventListener('input', () => { windStdVal.textContent = sliderWindStd.value; sendWind(); });
 sliderWindDir.addEventListener('input', () => { windDirVal.textContent = sliderWindDir.value; sendWind(); });
 sliderWindWander.addEventListener('input', () => { windWanderVal.textContent = sliderWindWander.value; sendWind(); });
-sliderWindKi.addEventListener('input', () => { windKiVal.textContent = sliderWindKi.value; sendWind(); });
-sliderWindIntmax.addEventListener('input', () => { windIntmaxVal.textContent = sliderWindIntmax.value; sendWind(); });
 
 // --- Status ---
 const statusEl = document.getElementById('hud-status');
@@ -252,7 +244,7 @@ infoPanelHeader.addEventListener('click', () => {
 const ALGO_PARAMS = {
     lqr: [
         { key: 'qpos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100, optMin: 1, optMax: 5000 },
-        { key: 'qphi', label: 'Swing weight', min: 10, max: 500, step: 10, default: 120, optMin: 1, optMax: 5000 },
+        { key: 'qphi', label: 'Swing damp', min: 10, max: 500, step: 10, default: 120, optMin: 1, optMax: 5000 },
         { key: 'rcost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08, optMin: 0.001, optMax: 10 },
     ],
     pid: [
@@ -289,7 +281,7 @@ const ALGO_PARAMS = {
 };
 
 // --- localStorage persistence for tuned params ---
-const LS_KEY = 'dronehangsim_tuned';
+const LS_KEY = 'dronehangsim_tuned_v2';
 
 function loadSavedParams() {
     try {

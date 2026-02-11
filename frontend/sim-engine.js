@@ -215,8 +215,6 @@ const DEFAULT_PARAMS = {
     windWander: 0,      // wind direction wander rate (rad/sqrt(s))
     windX: 0,           // instantaneous wind x-component (computed)
     windY: 0,           // instantaneous wind y-component (computed)
-    windKi: 0.3,        // integral gain for wind disturbance correction
-    windIntMax: 5.0,    // max integral correction offset (m)
 };
 
 function solve2x2(a11, a12, a21, a22, b1, b2) {
@@ -285,23 +283,48 @@ function weightPosition(state, L) {
 function computeLqrGains(params, Qlat, Rlat, Qvert, Rvert) {
     const { m_d, m_w, L, g } = params;
 
-    // Lateral subsystem A,B matrices (4x4, 4x1)
+    // Augmented lateral subsystem (5x5): [x_d, x_dot, phi, phi_dot, xi]
+    // where xi = integral of payload position error
+    // C_pay = [1, 0, L, 0] (payload_x = x_d + L*phi, linearized)
     const A_lat = matFromArray(4, 4, [
         0, 1, 0, 0,
         0, 0, m_w * g / m_d, 0,
         0, 0, 0, 1,
         0, 0, -(m_d + m_w) * g / (m_d * L), 0,
     ]);
-    const B_lat = matFromArray(4, 1, [0, 1 / m_d, 0, -1 / (m_d * L)]);
+    const B_lat4 = matFromArray(4, 1, [0, 1 / m_d, 0, -1 / (m_d * L)]);
 
-    if (!Qlat) Qlat = matFromArray(4, 4, [100, 0, 0, 0, 0, 25, 0, 0, 0, 0, 120, 0, 0, 0, 0, 30]);
+    // Build A_aug (5x5) = [A_lat | 0; C_pay | 0]
+    const A_aug = matCreate(5, 5);
+    for (let i = 0; i < 4; i++)
+        for (let j = 0; j < 4; j++)
+            matSet(A_aug, i, j, matGet(A_lat, i, j));
+    // Row 4: C_pay = [1, 0, L, 0, 0]
+    matSet(A_aug, 4, 0, 1);
+    matSet(A_aug, 4, 2, L);
+
+    // Build B_aug (5x1) = [B_lat; 0]
+    const B_aug = matCreate(5, 1);
+    for (let i = 0; i < 4; i++)
+        matSet(B_aug, i, 0, matGet(B_lat4, i, 0));
+
+    if (!Qlat) {
+        const qpos = 100, qphi = 30;
+        Qlat = matFromArray(5, 5, [
+            qpos,     0,            qpos*L,     0,                    0,
+            0,        qpos*0.25,    0,          qpos*0.25*L,          0,
+            qpos*L,   0,            qpos*L*L,   0,                    0,
+            0,        qpos*0.25*L,  0,          qpos*0.25*L*L + qphi, 0,
+            0,        0,            0,          0,                    qpos*0.1,
+        ]);
+    }
     if (!Rlat) Rlat = matFromArray(1, 1, [0.08]);
 
-    const P_lat = solveCARE(A_lat, B_lat, Qlat, Rlat, 4);
+    const P_lat = solveCARE(A_aug, B_aug, Qlat, Rlat, 5);
     // K = R^{-1} B^T P
-    const K_lat = matMul(matMul(matInverse(Rlat), matTranspose(B_lat)), P_lat);
+    const K_lat = matMul(matMul(matInverse(Rlat), matTranspose(B_aug)), P_lat);
 
-    // Vertical subsystem (2x2, 2x1)
+    // Vertical subsystem (2x2, 2x1) — unchanged
     const A_vert = matFromArray(2, 2, [0, 1, 0, 0]);
     const B_vert = matFromArray(2, 1, [0, 1 / (m_d + m_w)]);
 
@@ -314,20 +337,19 @@ function computeLqrGains(params, Qlat, Rlat, Qvert, Rvert) {
     return { K_lat, K_vert };
 }
 
-function computeLqrControl(state, ref, K_lat, K_vert, params) {
-    const x_d_des = ref.pos[0];
-    const y_d_des = ref.pos[1];
-    const z_d_des = ref.pos[2] + params.L;
+function computeLqrControl(state, ref, K_lat, K_vert, params, integX, integY) {
+    const L = params.L;
+    const z_d_des = ref.pos[2] + L;
 
-    // X-axis (include desired velocity in error state)
-    const x_err = [state[0] - x_d_des, state[1] - ref.vel[0], state[6], state[7]];
+    // X-axis: 5-element error [x_d - payload_des, x_dot - vel_des, phi, phi_dot, xi]
+    const x_err = [state[0] - ref.pos[0], state[1] - ref.vel[0], state[6], state[7], integX || 0];
     let F_x = 0;
-    for (let i = 0; i < 4; i++) F_x -= matGet(K_lat, 0, i) * x_err[i];
+    for (let i = 0; i < 5; i++) F_x -= matGet(K_lat, 0, i) * x_err[i];
 
-    // Y-axis
-    const y_err = [state[2] - y_d_des, state[3] - ref.vel[1], state[8], state[9]];
+    // Y-axis: same 5-element error structure
+    const y_err = [state[2] - ref.pos[1], state[3] - ref.vel[1], state[8], state[9], integY || 0];
     let F_y = 0;
-    for (let i = 0; i < 4; i++) F_y -= matGet(K_lat, 0, i) * y_err[i];
+    for (let i = 0; i < 5; i++) F_y -= matGet(K_lat, 0, i) * y_err[i];
 
     // Z-axis
     const z_err = [state[4] - z_d_des, state[5] - ref.vel[2]];
@@ -384,12 +406,15 @@ class PIDController {
 
     computeControl(state, ref, dt) {
         const { L, m_d, m_w, g } = this.params;
-        const ex = ref.pos[0] - state[0];
-        const ey = ref.pos[1] - state[2];
+        // Track payload position instead of drone position
+        const w = weightPosition(state, L);
+        const ex = ref.pos[0] - w.x;
+        const ey = ref.pos[1] - w.y;
         const ez = (ref.pos[2] + L) - state[4];
 
-        let F_x = this.pidX.step(ex, state[0], dt);
-        let F_y = this.pidY.step(ey, state[2], dt);
+        // Derivative-on-measurement uses payload position
+        let F_x = this.pidX.step(ex, w.x, dt);
+        let F_y = this.pidY.step(ey, w.y, dt);
         let F_z = this.pidZ.step(ez, state[4], dt);
 
         // Acceleration feedforward
@@ -431,6 +456,9 @@ class CascadePDController {
         this.kd_z = 30;
         this.prevPayloadX = null;
         this.prevPayloadY = null;
+        // Integral accumulators for payload position error
+        this._integX = 0;
+        this._integY = 0;
     }
 
     computeControl(state, ref, dt) {
@@ -453,8 +481,16 @@ class CascadePDController {
         // Include ref.vel for improved tracking of moving references
         const payload_ex = ref.pos[0] - w.x;
         const payload_ey = ref.pos[1] - w.y;
-        const drone_x_des = w.x + this.kp_outer * payload_ex + this.kd_outer * (ref.vel[0] - wdx);
-        const drone_y_des = w.y + this.kp_outer * payload_ey + this.kd_outer * (ref.vel[1] - wdy);
+
+        // Integral of payload position error
+        this._integX += payload_ex * dt;
+        this._integY += payload_ey * dt;
+        this._integX = Math.max(-10, Math.min(10, this._integX));
+        this._integY = Math.max(-10, Math.min(10, this._integY));
+        const ki_outer = this.kp_outer * 0.15;
+
+        const drone_x_des = w.x + this.kp_outer * payload_ex + this.kd_outer * (ref.vel[0] - wdx) + ki_outer * this._integX;
+        const drone_y_des = w.y + this.kp_outer * payload_ey + this.kd_outer * (ref.vel[1] - wdy) + ki_outer * this._integY;
 
         // Inner loop: force from drone position error
         const drone_ex = drone_x_des - state[0];
@@ -486,6 +522,8 @@ class CascadePDController {
     reset() {
         this.prevPayloadX = null;
         this.prevPayloadY = null;
+        this._integX = 0;
+        this._integY = 0;
     }
 }
 
@@ -749,14 +787,25 @@ class FlatnessController {
         this.kd_phi = 15;
         this.kp_z = 50;
         this.kd_z = 30;
+        // Integral of payload position error
+        this._integX = 0;
+        this._integY = 0;
     }
 
     computeControl(state, ref, dt) {
         const { L, g, m_d, m_w, maxLateral, maxThrust } = this.params;
 
-        // Flatness inversion using ref.acc directly (no internal filter needed)
-        const x_d_des = ref.pos[0] + (L / g) * ref.acc[0];
-        const y_d_des = ref.pos[1] + (L / g) * ref.acc[1];
+        // Integral of payload position error for wind compensation
+        const w = weightPosition(state, L);
+        this._integX += (ref.pos[0] - w.x) * dt;
+        this._integY += (ref.pos[1] - w.y) * dt;
+        this._integX = Math.max(-10, Math.min(10, this._integX));
+        this._integY = Math.max(-10, Math.min(10, this._integY));
+        const ki = this.kp * 0.08;
+
+        // Flatness inversion using ref.acc directly, biased by integral
+        const x_d_des = ref.pos[0] + (L / g) * ref.acc[0] + ki * this._integX;
+        const y_d_des = ref.pos[1] + (L / g) * ref.acc[1] + ki * this._integY;
 
         // Desired pendulum angle from flatness: phi = -acc / g
         const phi_x_des = -ref.acc[0] / g;
@@ -797,7 +846,10 @@ class FlatnessController {
         this.kd_z = 30 * s;
     }
 
-    reset() {}
+    reset() {
+        this._integX = 0;
+        this._integY = 0;
+    }
 }
 
 // ─── ZVD Input Shaper (layerable pre-filter) ────────────────────────────────
@@ -894,24 +946,42 @@ class FeedbackLinController {
         this.kp = 12;
         this.ka = 30;
         this.kb = 12;
+        // Integral of payload position error
+        this._integX = 0;
+        this._integY = 0;
     }
 
     computeControl(state, ref, dt) {
         const { m_d, m_w, L, g, maxLateral, maxThrust } = this.params;
         const kd = this.kp * 0.83;
+        const ki = this.kp * 0.1;
 
-        // X-axis feedback linearization (include desired velocity in virtual input)
+        // X-axis feedback linearization with payload tracking
         const phi_x = state[6], phix_dot = state[7];
         const sin_px = Math.sin(phi_x), cos_px = Math.cos(phi_x);
-        const vx = this.kp * (ref.pos[0] - state[0]) + kd * (ref.vel[0] - state[1]) - this.ka * phi_x - this.kb * phix_dot;
+        // Payload position and velocity
+        const w_x = state[0] + L * Math.sin(phi_x);
+        const w_dot_x = state[1] + L * Math.cos(phi_x) * phix_dot;
+        // Integral of payload error
+        this._integX += (ref.pos[0] - w_x) * dt;
+        this._integX = Math.max(-10, Math.min(10, this._integX));
+
+        const vx = this.kp * (ref.pos[0] - w_x) + kd * (ref.vel[0] - w_dot_x)
+            + ki * this._integX - this.ka * phi_x - this.kb * phix_dot;
         let F_x = (m_d + m_w * sin_px * sin_px) * vx
             - m_w * L * sin_px * phix_dot * phix_dot
             - m_w * g * sin_px * cos_px;
 
-        // Y-axis feedback linearization
+        // Y-axis feedback linearization with payload tracking
         const phi_y = state[8], phiy_dot = state[9];
         const sin_py = Math.sin(phi_y), cos_py = Math.cos(phi_y);
-        const vy = this.kp * (ref.pos[1] - state[2]) + kd * (ref.vel[1] - state[3]) - this.ka * phi_y - this.kb * phiy_dot;
+        const w_y = state[2] + L * Math.sin(phi_y);
+        const w_dot_y = state[3] + L * Math.cos(phi_y) * phiy_dot;
+        this._integY += (ref.pos[1] - w_y) * dt;
+        this._integY = Math.max(-10, Math.min(10, this._integY));
+
+        const vy = this.kp * (ref.pos[1] - w_y) + kd * (ref.vel[1] - w_dot_y)
+            + ki * this._integY - this.ka * phi_y - this.kb * phiy_dot;
         let F_y = (m_d + m_w * sin_py * sin_py) * vy
             - m_w * L * sin_py * phiy_dot * phiy_dot
             - m_w * g * sin_py * cos_py;
@@ -927,7 +997,10 @@ class FeedbackLinController {
         return [F_x, F_y, F_z];
     }
 
-    reset() {}
+    reset() {
+        this._integX = 0;
+        this._integY = 0;
+    }
 }
 
 // ─── Sliding Mode Controller ────────────────────────────────────────────────
@@ -947,19 +1020,14 @@ class SlidingModeController {
         const beta = this.alpha * 0.375;
 
         // Sliding surface: s = lambda*posErr + velErr + alpha*phi + beta*phiDot
-        // posErr = x - x_des, velErr = vel - vel_des
+        // posErr/velErr are now payload-based (passed from computeControl)
         const s = this.lambda * posErr + velErr + this.alpha * phi + beta * phiDot;
 
         // Coefficients from linearized dynamics for equivalent control
-        // ds/dt = lambda*x_dot + x_ddot + alpha*phi_dot + beta*phi_ddot
-        // From EOM (linearized): x_ddot = (F + m_w*g*phi) / (m_d + m_w)
-        //                         phi_ddot = -(F + (m_d+m_w)*g*phi) / ((m_d+m_w)*L)
-        // Coefficient of F in ds/dt:
         const coeff_F = 1.0 / (m_d + m_w) - beta / ((m_d + m_w) * L);
 
         // Guard against singularity (when beta ≈ L)
         if (Math.abs(coeff_F) < 1e-6) {
-            // Fallback: pure switching
             return -this.kSwitch * this._sat(s);
         }
 
@@ -981,11 +1049,17 @@ class SlidingModeController {
     computeControl(state, ref, dt) {
         const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
 
+        // Use payload position/velocity for position error (full nonlinear)
+        const w_x = state[0] + L * Math.sin(state[6]);
+        const w_dot_x = state[1] + L * Math.cos(state[6]) * state[7];
+        const w_y = state[2] + L * Math.sin(state[8]);
+        const w_dot_y = state[3] + L * Math.cos(state[8]) * state[9];
+
         let F_x = this._computeAxis(
-            state[0] - ref.pos[0], state[1] - ref.vel[0], state[6], state[7], this.params
+            w_x - ref.pos[0], w_dot_x - ref.vel[0], state[6], state[7], this.params
         );
         let F_y = this._computeAxis(
-            state[2] - ref.pos[1], state[3] - ref.vel[1], state[8], state[9], this.params
+            w_y - ref.pos[1], w_dot_y - ref.vel[1], state[8], state[9], this.params
         );
 
         // Vertical (simple PD)
@@ -1016,6 +1090,9 @@ class MPCController {
         this._dirty = true;
         this._K0_lat = null;
         this._K0_vert = null;
+        // Integral of payload position error
+        this._integX = 0;
+        this._integY = 0;
     }
 
     _recompute() {
@@ -1023,26 +1100,42 @@ class MPCController {
         const dt = this.dt;
         const N = this.horizon;
 
-        // --- Lateral subsystem (4x4) ---
+        // --- Augmented lateral subsystem (5x5) ---
         const A_lat = matFromArray(4, 4, [
             0, 1, 0, 0,
             0, 0, m_w * g / m_d, 0,
             0, 0, 0, 1,
             0, 0, -(m_d + m_w) * g / (m_d * L), 0,
         ]);
-        const B_lat = matFromArray(4, 1, [0, 1 / m_d, 0, -1 / (m_d * L)]);
+        const B_lat4 = matFromArray(4, 1, [0, 1 / m_d, 0, -1 / (m_d * L)]);
+
+        // Build A_aug (5x5) = [A_lat | 0; C_pay | 0]
+        const A_aug = matCreate(5, 5);
+        for (let i = 0; i < 4; i++)
+            for (let j = 0; j < 4; j++)
+                matSet(A_aug, i, j, matGet(A_lat, i, j));
+        matSet(A_aug, 4, 0, 1);
+        matSet(A_aug, 4, 2, L);
+
+        // Build B_aug (5x1) = [B_lat; 0]
+        const B_aug = matCreate(5, 1);
+        for (let i = 0; i < 4; i++)
+            matSet(B_aug, i, 0, matGet(B_lat4, i, 0));
 
         // Discretize: Ad = I + A*dt, Bd = B*dt
-        const I4 = matIdentity(4);
-        const Ad_lat = matAdd(I4, matScale(A_lat, dt));
-        const Bd_lat = matScale(B_lat, dt);
+        const I5 = matIdentity(5);
+        const Ad_lat = matAdd(I5, matScale(A_aug, dt));
+        const Bd_lat = matScale(B_aug, dt);
 
-        // Q, R, Qf
-        const Q_lat = matFromArray(4, 4, [
-            this.qPos, 0, 0, 0,
-            0, this.qPos * 0.25, 0, 0,
-            0, 0, this.qPos * 1.2, 0,
-            0, 0, 0, this.qPos * 0.3,
+        // Q with payload-position cross-terms
+        const qp = this.qPos;
+        const qphi = qp * 0.3;
+        const Q_lat = matFromArray(5, 5, [
+            qp,     0,          qp*L,     0,                  0,
+            0,      qp*0.25,    0,        qp*0.25*L,          0,
+            qp*L,   0,          qp*L*L,   0,                  0,
+            0,      qp*0.25*L,  0,        qp*0.25*L*L + qphi, 0,
+            0,      0,          0,        0,                  qp*0.1,
         ]);
         const R_lat = matFromArray(1, 1, [this.rCost]);
         const Qf_lat = matScale(Q_lat, 2); // terminal cost
@@ -1054,17 +1147,15 @@ class MPCController {
         let K0_lat = null;
 
         for (let i = N - 1; i >= 0; i--) {
-            // K[i] = (R + Bd' P Bd)^-1  Bd' P Ad
             const BtP = matMul(Bd_latT, P);
             const BtPBpR = matAdd(R_lat, matMul(BtP, Bd_lat));
             const BtPA = matMul(BtP, Ad_lat);
             const K = matMul(matInverse(BtPBpR), BtPA);
             if (i === 0) K0_lat = K;
-            // P[i] = Q + Ad' P Ad - Ad' P Bd K
             P = matAdd(Q_lat, matSub(matMul(Ad_latT, matMul(P, Ad_lat)), matMul(matMul(Ad_latT, matMul(P, Bd_lat)), K)));
         }
 
-        // --- Vertical subsystem (2x2) ---
+        // --- Vertical subsystem (2x2) --- unchanged
         const A_vert = matFromArray(2, 2, [0, 1, 0, 0]);
         const B_vert = matFromArray(2, 1, [0, 1 / (m_d + m_w)]);
         const I2 = matIdentity(2);
@@ -1100,15 +1191,22 @@ class MPCController {
         const K_lat = this._K0_lat;
         const K_vert = this._K0_vert;
 
-        // X-axis error (include desired velocity)
-        const x_err = [state[0] - ref.pos[0], state[1] - ref.vel[0], state[6], state[7]];
-        let F_x = 0;
-        for (let i = 0; i < 4; i++) F_x -= matGet(K_lat, 0, i) * x_err[i];
+        // Update integral of payload position error
+        const w = weightPosition(state, L);
+        this._integX += (ref.pos[0] - w.x) * dt;
+        this._integY += (ref.pos[1] - w.y) * dt;
+        this._integX = Math.max(-10, Math.min(10, this._integX));
+        this._integY = Math.max(-10, Math.min(10, this._integY));
 
-        // Y-axis error
-        const y_err = [state[2] - ref.pos[1], state[3] - ref.vel[1], state[8], state[9]];
+        // X-axis: 5-element error [x_d - payload_des, x_dot - vel_des, phi, phi_dot, xi]
+        const x_err = [state[0] - ref.pos[0], state[1] - ref.vel[0], state[6], state[7], this._integX];
+        let F_x = 0;
+        for (let i = 0; i < 5; i++) F_x -= matGet(K_lat, 0, i) * x_err[i];
+
+        // Y-axis: 5-element error
+        const y_err = [state[2] - ref.pos[1], state[3] - ref.vel[1], state[8], state[9], this._integY];
         let F_y = 0;
-        for (let i = 0; i < 4; i++) F_y -= matGet(K_lat, 0, i) * y_err[i];
+        for (let i = 0; i < 5; i++) F_y -= matGet(K_lat, 0, i) * y_err[i];
 
         // Z-axis error
         const z_err = [state[4] - (ref.pos[2] + L), state[5] - ref.vel[2]];
@@ -1125,7 +1223,11 @@ class MPCController {
 
     markDirty() { this._dirty = true; }
 
-    reset() { this._dirty = true; }
+    reset() {
+        this._dirty = true;
+        this._integX = 0;
+        this._integY = 0;
+    }
 }
 
 // ─── Energy-Based Swing Damping (layerable on any controller) ───────────────
@@ -1193,8 +1295,9 @@ export class Simulation {
         this._trajStartTime = 0;
         this._useTrajectory = false;
 
-        // Integral correction for disturbance rejection (wind, etc.)
-        this._payloadIntegral = [0, 0];
+        // LQR integral state (payload position error integral)
+        this._lqrIntX = 0;
+        this._lqrIntY = 0;
 
         // Wind OU process state (smooth time-varying wind)
         this._windStrState = 0;   // current wind strength (OU state)
@@ -1255,19 +1358,13 @@ export class Simulation {
             ref = this._refSmoother.update(goalPos, this.dt);
         }
 
-        // Integral correction: offset ref so controllers compensate for
-        // constant disturbances (wind) that push the payload off-goal.
-        // Accumulates payload position error and biases the reference upwind.
-        const ki = this.params.windKi;
-        const maxInt = this.params.windIntMax;
-        if (this.controllerType !== 'off' && ki > 0) {
+        // Update LQR integral state (payload position error)
+        if (this.controllerType === 'lqr') {
             const w = weightPosition(this.state, this.params.L);
-            this._payloadIntegral[0] += (ref.pos[0] - w.x) * this.dt * ki;
-            this._payloadIntegral[1] += (ref.pos[1] - w.y) * this.dt * ki;
-            this._payloadIntegral[0] = Math.max(-maxInt, Math.min(maxInt, this._payloadIntegral[0]));
-            this._payloadIntegral[1] = Math.max(-maxInt, Math.min(maxInt, this._payloadIntegral[1]));
-            ref.pos[0] += this._payloadIntegral[0];
-            ref.pos[1] += this._payloadIntegral[1];
+            this._lqrIntX += (ref.pos[0] - w.x) * this.dt;
+            this._lqrIntY += (ref.pos[1] - w.y) * this.dt;
+            this._lqrIntX = Math.max(-10, Math.min(10, this._lqrIntX));
+            this._lqrIntY = Math.max(-10, Math.min(10, this._lqrIntY));
         }
 
         let control;
@@ -1294,7 +1391,7 @@ export class Simulation {
                 control = this.mpc.computeControl(this.state, ref, this.dt);
                 break;
             default: // 'lqr'
-                control = computeLqrControl(this.state, ref, this.K_lat, this.K_vert, this.params);
+                control = computeLqrControl(this.state, ref, this.K_lat, this.K_vert, this.params, this._lqrIntX, this._lqrIntY);
                 break;
         }
 
@@ -1341,7 +1438,6 @@ export class Simulation {
         this.goal = [x, y, z];
         this._useTrajectory = false;
         this._trajectory = null;
-        this._payloadIntegral = [0, 0];
     }
 
     setTrajectory(traj) {
@@ -1367,6 +1463,14 @@ export class Simulation {
 
     setControllerType(type) {
         this.controllerType = type;
+        // Reset all controller integral states on switch
+        this._lqrIntX = 0;
+        this._lqrIntY = 0;
+        this.pid.reset();
+        this.cascade.reset();
+        this.flatness.reset();
+        this.feedbacklin.reset();
+        this.mpc.reset();
     }
 
     setSwingDamping(enabled) {
@@ -1381,11 +1485,14 @@ export class Simulation {
     setControllerParams(type, p) {
         switch (type) {
             case 'lqr': {
-                const Qlat = matFromArray(4, 4, [
-                    p.qpos, 0, 0, 0,
-                    0, p.qpos * 0.25, 0, 0,
-                    0, 0, p.qphi, 0,
-                    0, 0, 0, p.qphi * 0.25,
+                const L = this.params.L;
+                const qint = p.qpos * 0.1;
+                const Qlat = matFromArray(5, 5, [
+                    p.qpos,     0,              p.qpos*L,     0,                          0,
+                    0,          p.qpos*0.25,    0,            p.qpos*0.25*L,              0,
+                    p.qpos*L,   0,              p.qpos*L*L,   0,                          0,
+                    0,          p.qpos*0.25*L,  0,            p.qpos*0.25*L*L + p.qphi,   0,
+                    0,          0,              0,            0,                          qint,
                 ]);
                 const Rlat = matFromArray(1, 1, [p.rcost]);
                 const Qvert = matFromArray(2, 2, [p.qpos * 2.5, 0, 0, p.qpos * 0.8]);
@@ -1448,13 +1555,18 @@ export class Simulation {
         // Quadratic scaling: gentle at low aggression, much stronger at high
         const qScale = aggr * aggr;
         const rScale = 1 / (aggr * aggr);
+        const L = this.params.L;
 
-        // Re-compute LQR gains with scaled Q/R
-        const Qlat = matFromArray(4, 4, [
-            100 * qScale, 0, 0, 0,
-            0, 25 * qScale, 0, 0,
-            0, 0, 120 * qScale, 0,
-            0, 0, 0, 30 * qScale,
+        // Re-compute LQR gains with scaled Q/R (5x5 payload-tracking)
+        const qpos = 100 * qScale;
+        const qphi = 30 * qScale;
+        const qint = qpos * 0.1;
+        const Qlat = matFromArray(5, 5, [
+            qpos,     0,            qpos*L,     0,                    0,
+            0,        qpos*0.25,    0,          qpos*0.25*L,          0,
+            qpos*L,   0,            qpos*L*L,   0,                    0,
+            0,        qpos*0.25*L,  0,          qpos*0.25*L*L + qphi, 0,
+            0,        0,            0,          0,                    qint,
         ]);
         const Rlat = matFromArray(1, 1, [0.08 * rScale]);
         const Qvert = matFromArray(2, 2, [250 * qScale, 0, 0, 80 * qScale]);
@@ -1514,7 +1626,8 @@ export class Simulation {
         this._refSmoother.reset([0, 0, 0]);
         this._trajectory = null;
         this._useTrajectory = false;
-        this._payloadIntegral = [0, 0];
+        this._lqrIntX = 0;
+        this._lqrIntY = 0;
         this._windStrState = this.params.windMean;
         this._windDirState = this.params.windDir;
     }
