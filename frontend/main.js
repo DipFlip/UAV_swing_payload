@@ -192,19 +192,32 @@ const sliderWindStd = document.getElementById('slider-wind-std');
 const windStdVal = document.getElementById('wind-std-val');
 const sliderWindDir = document.getElementById('slider-wind-dir');
 const windDirVal = document.getElementById('wind-dir-val');
+const sliderWindWander = document.getElementById('slider-wind-wander');
+const windWanderVal = document.getElementById('wind-wander-val');
+const sliderWindKi = document.getElementById('slider-wind-ki');
+const windKiVal = document.getElementById('wind-ki-val');
+const sliderWindIntmax = document.getElementById('slider-wind-intmax');
+const windIntmaxVal = document.getElementById('wind-intmax-val');
 
 function sendWind() {
     const windMean = parseFloat(sliderWindStr.value);
     const windStddev = parseFloat(sliderWindStd.value);
     const dirDeg = parseFloat(sliderWindDir.value);
     const windDir = dirDeg * Math.PI / 180;
-    simLqr.setParams({ windMean, windStddev, windDir });
-    simPid.setParams({ windMean, windStddev, windDir });
+    const wanderDeg = parseFloat(sliderWindWander.value);
+    const windWander = wanderDeg * Math.PI / 180;
+    const windKi = parseFloat(sliderWindKi.value);
+    const windIntMax = parseFloat(sliderWindIntmax.value);
+    simLqr.setParams({ windMean, windStddev, windDir, windWander, windKi, windIntMax });
+    simPid.setParams({ windMean, windStddev, windDir, windWander, windKi, windIntMax });
 }
 
 sliderWindStr.addEventListener('input', () => { windStrVal.textContent = sliderWindStr.value; sendWind(); });
 sliderWindStd.addEventListener('input', () => { windStdVal.textContent = sliderWindStd.value; sendWind(); });
 sliderWindDir.addEventListener('input', () => { windDirVal.textContent = sliderWindDir.value; sendWind(); });
+sliderWindWander.addEventListener('input', () => { windWanderVal.textContent = sliderWindWander.value; sendWind(); });
+sliderWindKi.addEventListener('input', () => { windKiVal.textContent = sliderWindKi.value; sendWind(); });
+sliderWindIntmax.addEventListener('input', () => { windIntmaxVal.textContent = sliderWindIntmax.value; sendWind(); });
 
 // --- Status ---
 const statusEl = document.getElementById('hud-status');

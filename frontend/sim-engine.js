@@ -212,8 +212,11 @@ const DEFAULT_PARAMS = {
     windMean: 0,        // mean wind force on payload (N)
     windStddev: 0,      // wind force standard deviation (N)
     windDir: 0,         // wind direction (radians, 0 = +x)
+    windWander: 0,      // wind direction wander rate (rad/sqrt(s))
     windX: 0,           // instantaneous wind x-component (computed)
     windY: 0,           // instantaneous wind y-component (computed)
+    windKi: 0.3,        // integral gain for wind disturbance correction
+    windIntMax: 5.0,    // max integral correction offset (m)
 };
 
 function solve2x2(a11, a12, a21, a22, b1, b2) {
@@ -1193,23 +1196,45 @@ export class Simulation {
         // Integral correction for disturbance rejection (wind, etc.)
         this._payloadIntegral = [0, 0];
 
+        // Wind OU process state (smooth time-varying wind)
+        this._windStrState = 0;   // current wind strength (OU state)
+        this._windDirState = 0;   // current wind direction (OU state)
+
         // Wind state for visualization
         this.lastWind = { strength: 0, dir: 0 };
     }
 
     _updateWind() {
-        const { windMean, windStddev, windDir } = this.params;
-        let strength = windMean;
+        const { windMean, windStddev, windDir, windWander } = this.params;
+        const sqrtDt = Math.sqrt(this.dt);
+
+        // Ornstein-Uhlenbeck process for wind strength (smooth variation)
+        const thetaStr = 2.0; // mean-reversion rate (~0.5s time constant)
         if (windStddev > 0) {
-            // Box-Muller transform for Gaussian noise
-            const u1 = Math.random();
-            const u2 = Math.random();
+            const u1 = Math.random(), u2 = Math.random();
             const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
-            strength = Math.max(0, windMean + windStddev * z);
+            this._windStrState += thetaStr * (windMean - this._windStrState) * this.dt + windStddev * sqrtDt * z;
+            this._windStrState = Math.max(0, this._windStrState);
+        } else {
+            this._windStrState = windMean;
         }
-        this.params.windX = strength * Math.cos(windDir);
-        this.params.windY = strength * Math.sin(windDir);
-        this.lastWind = { strength, dir: windDir };
+
+        // Ornstein-Uhlenbeck process for wind direction (smooth wander)
+        const thetaDir = 1.0; // slower mean-reversion for direction
+        if (windWander > 0) {
+            const u1 = Math.random(), u2 = Math.random();
+            const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
+            // Compute shortest angular difference for mean-reversion
+            let diff = windDir - this._windDirState;
+            diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+            this._windDirState += thetaDir * diff * this.dt + windWander * sqrtDt * z;
+        } else {
+            this._windDirState = windDir;
+        }
+
+        this.params.windX = this._windStrState * Math.cos(this._windDirState);
+        this.params.windY = this._windStrState * Math.sin(this._windDirState);
+        this.lastWind = { strength: this._windStrState, dir: this._windDirState };
     }
 
     step() {
@@ -1233,10 +1258,10 @@ export class Simulation {
         // Integral correction: offset ref so controllers compensate for
         // constant disturbances (wind) that push the payload off-goal.
         // Accumulates payload position error and biases the reference upwind.
-        if (this.controllerType !== 'off') {
+        const ki = this.params.windKi;
+        const maxInt = this.params.windIntMax;
+        if (this.controllerType !== 'off' && ki > 0) {
             const w = weightPosition(this.state, this.params.L);
-            const ki = 0.3;
-            const maxInt = 5.0;
             this._payloadIntegral[0] += (ref.pos[0] - w.x) * this.dt * ki;
             this._payloadIntegral[1] += (ref.pos[1] - w.y) * this.dt * ki;
             this._payloadIntegral[0] = Math.max(-maxInt, Math.min(maxInt, this._payloadIntegral[0]));
@@ -1490,5 +1515,7 @@ export class Simulation {
         this._trajectory = null;
         this._useTrajectory = false;
         this._payloadIntegral = [0, 0];
+        this._windStrState = this.params.windMean;
+        this._windDirState = this.params.windDir;
     }
 }
