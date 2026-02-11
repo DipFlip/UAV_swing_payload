@@ -406,15 +406,16 @@ class PIDController {
 
     computeControl(state, ref, dt) {
         const { L, m_d, m_w, g } = this.params;
-        // Track payload position instead of drone position
+        // Track payload position for P/I error
         const w = weightPosition(state, L);
         const ex = ref.pos[0] - w.x;
         const ey = ref.pos[1] - w.y;
         const ez = (ref.pos[2] + L) - state[4];
 
-        // Derivative-on-measurement uses payload position
-        let F_x = this.pidX.step(ex, w.x, dt);
-        let F_y = this.pidY.step(ey, w.y, dt);
+        // Derivative-on-measurement uses drone position (not payload) to
+        // avoid amplifying pendulum oscillations through the Kd term
+        let F_x = this.pidX.step(ex, state[0], dt);
+        let F_y = this.pidY.step(ey, state[2], dt);
         let F_z = this.pidZ.step(ez, state[4], dt);
 
         // Acceleration feedforward

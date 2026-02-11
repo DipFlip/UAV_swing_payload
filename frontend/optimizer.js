@@ -100,14 +100,21 @@ const DEFAULT_COST_WEIGHTS = { n: 1, wTrack: 1, wSwing: 2, wEffort: 0.001, wSett
 
 function evaluateController(algoType, paramValues, physicsParams, dt, costWeights) {
     const cw = costWeights || DEFAULT_COST_WEIGHTS;
-    const sim = new Simulation(algoType);
+    let sim;
+    try {
+        sim = new Simulation(algoType);
+    } catch (e) {
+        return 1e10; // CARE solver or other init failure
+    }
     sim.dt = dt;
 
     // Copy physics params
-    sim.setParams({ ...physicsParams });
-
-    // Apply controller params
-    sim.setControllerParams(algoType, paramValues);
+    try {
+        sim.setParams({ ...physicsParams });
+        sim.setControllerParams(algoType, paramValues);
+    } catch (e) {
+        return 1e10; // Gain computation failure for these params
+    }
 
     // Step response: from origin to (5, 0, 2)
     const goalX = 5, goalY = 0, goalZ = 2;
@@ -123,7 +130,11 @@ function evaluateController(algoType, paramValues, physicsParams, dt, costWeight
     const settleBand = 0.05 * stepMag; // 5% of step magnitude
 
     for (let i = 0; i < totalSteps; i++) {
-        sim.step();
+        try {
+            sim.step();
+        } catch (e) {
+            return 1e10; // Simulation failure
+        }
 
         const t = (i + 1) * dt;
         const state = sim.state;
@@ -158,6 +169,9 @@ function evaluateController(algoType, paramValues, physicsParams, dt, costWeight
         if (Math.abs(state[0]) > 50 || Math.abs(state[2]) > 50 || Math.abs(state[4]) > 100) {
             return 1e10;
         }
+
+        // NaN guard
+        if (isNaN(cost)) return 1e10;
     }
 
     cost += cw.wSettle * settlingTime;
@@ -167,6 +181,7 @@ function evaluateController(algoType, paramValues, physicsParams, dt, costWeight
 // ─── Evaluate cost for given params (used by tuneAll for "before" measurement) ─
 
 export function evaluateCost(algoType, algoParamDefs, physicsParams, dt, costWeights) {
+    if (!algoParamDefs || algoParamDefs.length === 0) return 0;
     const paramObj = {};
     algoParamDefs.forEach(p => { paramObj[p.key] = p.default; });
     return evaluateController(algoType, paramObj, physicsParams, dt, costWeights);
@@ -175,6 +190,9 @@ export function evaluateCost(algoType, algoParamDefs, physicsParams, dt, costWei
 // ─── Auto-Tune Wrapper ─────────────────────────────────────────────────────
 
 export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress, costWeights) {
+    if (!algoParamDefs || algoParamDefs.length === 0) {
+        return Promise.resolve({ params: {}, cost: 0 });
+    }
     // Build x0 and bounds from param definitions (use wide optMin/optMax if available)
     const x0 = algoParamDefs.map(p => p.default);
     const bounds = algoParamDefs.map(p => [p.optMin ?? p.min, p.optMax ?? p.max]);
