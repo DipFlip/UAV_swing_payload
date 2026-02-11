@@ -1192,10 +1192,10 @@ class MPCController {
         const K_lat = this._K0_lat;
         const K_vert = this._K0_vert;
 
-        // Update integral of payload position error
+        // Update integral of payload error (payload - ref, matching CARE sign convention)
         const w = weightPosition(state, L);
-        this._integX += (ref.pos[0] - w.x) * dt;
-        this._integY += (ref.pos[1] - w.y) * dt;
+        this._integX += (w.x - ref.pos[0]) * dt;
+        this._integY += (w.y - ref.pos[1]) * dt;
         this._integX = Math.max(-10, Math.min(10, this._integX));
         this._integY = Math.max(-10, Math.min(10, this._integY));
 
@@ -1359,11 +1359,11 @@ export class Simulation {
             ref = this._refSmoother.update(goalPos, this.dt);
         }
 
-        // Update LQR integral state (payload position error)
+        // Update LQR integral state (payload - ref, matching CARE sign convention)
         if (this.controllerType === 'lqr') {
             const w = weightPosition(this.state, this.params.L);
-            this._lqrIntX += (ref.pos[0] - w.x) * this.dt;
-            this._lqrIntY += (ref.pos[1] - w.y) * this.dt;
+            this._lqrIntX += (w.x - ref.pos[0]) * this.dt;
+            this._lqrIntY += (w.y - ref.pos[1]) * this.dt;
             this._lqrIntX = Math.max(-10, Math.min(10, this._lqrIntX));
             this._lqrIntY = Math.max(-10, Math.min(10, this._lqrIntY));
         }
