@@ -1441,9 +1441,18 @@ export class Simulation {
         this._trajectory = null;
     }
 
-    setTrajectory(traj) {
+    setTrajectory(traj, preserveProgress) {
+        if (preserveProgress && this._trajectory && this._useTrajectory) {
+            // Compute fractional progress through old trajectory and map to new
+            const oldElapsed = this.time - this._trajStartTime;
+            const oldDur = this._trajectory.duration;
+            const frac = oldDur > 0 ? (oldElapsed % oldDur) / oldDur : 0;
+            const newOffset = frac * traj.duration;
+            this._trajStartTime = this.time - newOffset;
+        } else {
+            this._trajStartTime = this.time;
+        }
         this._trajectory = traj;
-        this._trajStartTime = this.time;
         this._useTrajectory = true;
     }
 

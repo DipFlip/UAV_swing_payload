@@ -23,7 +23,7 @@ class RollingChart {
 
     push(values) {
         for (let i = 0; i < this.series.length; i++) {
-            this.data[i].push(values[i] ?? 0);
+            this.data[i].push(values[i]);
             if (this.data[i].length > HISTORY_SIZE) this.data[i].shift();
         }
     }
@@ -40,10 +40,10 @@ class RollingChart {
         ctx.fillStyle = 'rgba(20, 20, 30, 0.95)';
         ctx.fillRect(0, 0, W, H);
 
-        // Compute range
+        // Compute range (filter out null values from off drones)
         let min, max;
         if (this.autoRange) {
-            let allVals = this.data.flat();
+            let allVals = this.data.flat().filter(v => v != null);
             if (allVals.length === 0) allVals = [0];
             min = Math.min(...allVals);
             max = Math.max(...allVals);
@@ -90,10 +90,12 @@ class RollingChart {
         ctx.lineWidth = 1;
         ctx.strokeRect(p.left, p.top, plotW, plotH);
 
-        // Draw series
+        // Draw series (skip null values from off drones)
         for (let s = 0; s < this.series.length; s++) {
             const d = this.data[s];
             if (d.length < 2) continue;
+            // Skip entirely if all values are null
+            if (d.every(v => v == null)) continue;
 
             ctx.strokeStyle = this.series[s].color;
             ctx.lineWidth = this.series[s].thick ? 2 : 1.5;
@@ -102,10 +104,12 @@ class RollingChart {
             }
             ctx.beginPath();
 
+            let drawing = false;
             for (let i = 0; i < d.length; i++) {
+                if (d[i] == null) { drawing = false; continue; }
                 const x = p.left + (plotW * i / (HISTORY_SIZE - 1));
                 const y = p.top + plotH * (1 - (d[i] - min) / (max - min));
-                if (i === 0) ctx.moveTo(x, y);
+                if (!drawing) { ctx.moveTo(x, y); drawing = true; }
                 else ctx.lineTo(x, y);
             }
             ctx.stroke();
@@ -118,14 +122,15 @@ class RollingChart {
         ctx.textAlign = 'left';
         ctx.fillText(this.title, p.left, 14);
 
-        // Legend (right-aligned)
+        // Legend (right-aligned, skip off drones)
         let legendX = W - p.right;
         ctx.font = '9px monospace';
         ctx.textAlign = 'right';
         for (let s = this.series.length - 1; s >= 0; s--) {
             const d = this.data[s];
-            const val = d.length > 0 ? d[d.length - 1] : 0;
-            const text = `${this.series[s].label}:${val.toFixed(1)}${this.unit}`;
+            const last = d.length > 0 ? d[d.length - 1] : null;
+            if (last == null) continue; // skip off drones in legend
+            const text = `${this.series[s].label}:${last.toFixed(1)}${this.unit}`;
             const tw = ctx.measureText(text).width;
 
             ctx.fillStyle = this.series[s].color;
@@ -243,49 +248,51 @@ export class ChartPanel {
         });
     }
 
-    update(data, prevData) {
+    update(data, prevData, algoA, algoB) {
         const lqr = data.lqr;
         const pid = data.pid;
         const g = lqr.goal;
+        const aOn = algoA !== 'off';
+        const bOn = algoB !== 'off';
 
         // Distance to goal
-        const lqrDist = Math.sqrt(
+        const lqrDist = aOn ? Math.sqrt(
             (lqr.weight.x - g.x) ** 2 + (lqr.weight.y - g.y) ** 2 + (lqr.weight.z - g.z) ** 2
-        );
-        const pidDist = Math.sqrt(
+        ) : null;
+        const pidDist = bOn ? Math.sqrt(
             (pid.weight.x - g.x) ** 2 + (pid.weight.y - g.y) ** 2 + (pid.weight.z - g.z) ** 2
-        );
+        ) : null;
         this.distChart.push([lqrDist, pidDist]);
 
         // Swing angle magnitude
-        const lqrSwing = Math.sqrt(lqr.phi_x ** 2 + lqr.phi_y ** 2) * 180 / Math.PI;
-        const pidSwing = Math.sqrt(pid.phi_x ** 2 + pid.phi_y ** 2) * 180 / Math.PI;
+        const lqrSwing = aOn ? Math.sqrt(lqr.phi_x ** 2 + lqr.phi_y ** 2) * 180 / Math.PI : null;
+        const pidSwing = bOn ? Math.sqrt(pid.phi_x ** 2 + pid.phi_y ** 2) * 180 / Math.PI : null;
         this.swingChart.push([lqrSwing, pidSwing]);
 
         // Control forces
-        this.lqrForceChart.push([lqr.control.Fx, lqr.control.Fy, lqr.control.Fz]);
-        this.pidForceChart.push([pid.control.Fx, pid.control.Fy, pid.control.Fz]);
+        this.lqrForceChart.push(aOn ? [lqr.control.Fx, lqr.control.Fy, lqr.control.Fz] : [null, null, null]);
+        this.pidForceChart.push(bOn ? [pid.control.Fx, pid.control.Fy, pid.control.Fz] : [null, null, null]);
 
         // Weight speed
         if (prevData) {
             const dt = lqr.time - prevData.lqr.time;
             if (dt > 0) {
-                const lqrSpeed = Math.sqrt(
+                const lqrSpeed = aOn ? Math.sqrt(
                     ((lqr.weight.x - prevData.lqr.weight.x) / dt) ** 2 +
                     ((lqr.weight.y - prevData.lqr.weight.y) / dt) ** 2 +
                     ((lqr.weight.z - prevData.lqr.weight.z) / dt) ** 2
-                );
-                const pidSpeed = Math.sqrt(
+                ) : null;
+                const pidSpeed = bOn ? Math.sqrt(
                     ((pid.weight.x - prevData.pid.weight.x) / dt) ** 2 +
                     ((pid.weight.y - prevData.pid.weight.y) / dt) ** 2 +
                     ((pid.weight.z - prevData.pid.weight.z) / dt) ** 2
-                );
+                ) : null;
                 this.velChart.push([lqrSpeed, pidSpeed]);
             } else {
-                this.velChart.push([0, 0]);
+                this.velChart.push([aOn ? 0 : null, bOn ? 0 : null]);
             }
         } else {
-            this.velChart.push([0, 0]);
+            this.velChart.push([aOn ? 0 : null, bOn ? 0 : null]);
         }
 
         // Redraw all

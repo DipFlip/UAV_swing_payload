@@ -90,7 +90,7 @@ sceneObjects.setOnAnimate((wallDt) => {
         const data = { type: 'dual_state', lqr: latestLqr, pid: latestPid };
         updateScene(sceneObjects, data, algoA.value, algoB.value);
         updateHUD(data);
-        chartPanel.update(data, prevData);
+        chartPanel.update(data, prevData, algoA.value, algoB.value);
         prevData = data;
 
         // Sync sliders from trajectory position
@@ -146,7 +146,7 @@ sliderSmooth.addEventListener('input', () => {
     simPid.setSmootherOmega(val);
     // Rebuild trajectory with new tension if pattern is active
     if (patternActive) {
-        rebuildActiveTrajectory();
+        rebuildActiveTrajectory(true);
     }
 });
 
@@ -567,7 +567,7 @@ const speedVal = document.getElementById('speed-val');
 sliderSpeed.addEventListener('input', () => {
     speedVal.textContent = sliderSpeed.value;
     if (patternActive) {
-        rebuildActiveTrajectory();
+        rebuildActiveTrajectory(true);
     }
 });
 
@@ -595,10 +595,10 @@ function buildTrajectory() {
     return createSquareTrajectory(SQUARE_SIZE, SQUARE_Z, speed, tension);
 }
 
-function rebuildActiveTrajectory() {
+function rebuildActiveTrajectory(preserveProgress) {
     const traj = buildTrajectory();
-    simLqr.setTrajectory(traj);
-    simPid.setTrajectory(traj);
+    simLqr.setTrajectory(traj, preserveProgress);
+    simPid.setTrajectory(traj, preserveProgress);
     sceneObjects.updatePatternPreview(traj.samplePath(200));
 }
 
@@ -625,7 +625,7 @@ btnPattern.addEventListener('click', () => {
 
 patternSelect.addEventListener('change', () => {
     if (patternActive) {
-        rebuildActiveTrajectory();
+        rebuildActiveTrajectory(true);
     }
 });
 
