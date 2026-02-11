@@ -289,9 +289,11 @@ export function autoTune(algoType, algoParamDefs, physicsParams, dt, onProgress,
                 const best = simplex[0];
                 const params = {};
                 algoParamDefs.forEach((p, i) => {
-                    // Snap to slider step for clean values
+                    // Snap to slider step for clean values, clamped to optimizer bounds
                     const raw = best.x[i];
-                    const snapped = Math.round(raw / p.step) * p.step;
+                    const lo = p.optMin ?? p.min;
+                    const hi = p.optMax ?? p.max;
+                    const snapped = Math.max(lo, Math.min(hi, Math.round(raw / p.step) * p.step));
                     params[p.key] = parseFloat(snapped.toFixed(6));
                 });
                 resolve({ params, cost: best.cost });

@@ -309,7 +309,7 @@ function computeLqrGains(params, Qlat, Rlat, Qvert, Rvert) {
         matSet(B_aug, i, 0, matGet(B_lat4, i, 0));
 
     if (!Qlat) {
-        const qpos = 100, qphi = 30;
+        const qpos = 10, qphi = 30;
         Qlat = matFromArray(5, 5, [
             qpos,     0,            qpos*L,     0,                    0,
             0,        qpos*0.25,    0,          qpos*0.25*L,          0,
@@ -1086,7 +1086,7 @@ class MPCController {
         this.params = params;
         this.dt = dt;
         this.horizon = 50;
-        this.qPos = 100;
+        this.qPos = 10;
         this.rCost = 0.08;
         this._dirty = true;
         this._K0_lat = null;
@@ -1162,7 +1162,7 @@ class MPCController {
         const I2 = matIdentity(2);
         const Ad_vert = matAdd(I2, matScale(A_vert, dt));
         const Bd_vert = matScale(B_vert, dt);
-        const Q_vert = matFromArray(2, 2, [this.qPos * 2.5, 0, 0, this.qPos * 0.8]);
+        const Q_vert = matFromArray(2, 2, [this.qPos * 25, 0, 0, this.qPos * 8]);
         const R_vert = matFromArray(1, 1, [this.rCost]);
         const Qf_vert = matScale(Q_vert, 2);
 
@@ -1496,7 +1496,8 @@ export class Simulation {
                     0,          0,              0,            0,                          qint,
                 ]);
                 const Rlat = matFromArray(1, 1, [p.rcost]);
-                const Qvert = matFromArray(2, 2, [p.qpos * 2.5, 0, 0, p.qpos * 0.8]);
+                // Vertical scaling compensates for lower qpos (payload Q amplifies lateral by L²)
+                const Qvert = matFromArray(2, 2, [p.qpos * 25, 0, 0, p.qpos * 8]);
                 const Rvert = matFromArray(1, 1, [p.rcost]);
                 const { K_lat, K_vert } = computeLqrGains(this.params, Qlat, Rlat, Qvert, Rvert);
                 this.K_lat = K_lat;
@@ -1559,7 +1560,7 @@ export class Simulation {
         const L = this.params.L;
 
         // Re-compute LQR gains with scaled Q/R (5x5 payload-tracking)
-        const qpos = 100 * qScale;
+        const qpos = 10 * qScale;
         const qphi = 30 * qScale;
         const qint = qpos * 0.1;
         const Qlat = matFromArray(5, 5, [

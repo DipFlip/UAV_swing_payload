@@ -243,7 +243,7 @@ infoPanelHeader.addEventListener('click', () => {
 // --- Algorithm-specific parameter definitions ---
 const ALGO_PARAMS = {
     lqr: [
-        { key: 'qpos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100, optMin: 1, optMax: 5000 },
+        { key: 'qpos', label: 'Pos weight', min: 1, max: 100, step: 1, default: 10, optMin: 0.5, optMax: 1000 },
         { key: 'qphi', label: 'Swing damp', min: 10, max: 500, step: 10, default: 120, optMin: 1, optMax: 5000 },
         { key: 'rcost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08, optMin: 0.001, optMax: 10 },
     ],
@@ -275,7 +275,7 @@ const ALGO_PARAMS = {
     ],
     mpc: [
         { key: 'horizon', label: 'Horizon N', min: 5, max: 200, step: 5, default: 50, optMin: 2, optMax: 500 },
-        { key: 'qPos', label: 'Pos weight', min: 10, max: 500, step: 10, default: 100, optMin: 1, optMax: 5000 },
+        { key: 'qPos', label: 'Pos weight', min: 1, max: 100, step: 1, default: 10, optMin: 0.5, optMax: 1000 },
         { key: 'rCost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08, optMin: 0.001, optMax: 10 },
     ],
 };
