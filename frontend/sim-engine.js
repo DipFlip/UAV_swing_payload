@@ -498,8 +498,8 @@ class CascadePDController {
         // Integral of payload position error
         this._integX += payload_ex * dt;
         this._integY += payload_ey * dt;
-        this._integX = Math.max(-10, Math.min(10, this._integX));
-        this._integY = Math.max(-10, Math.min(10, this._integY));
+        this._integX = Math.max(-20, Math.min(20, this._integX));
+        this._integY = Math.max(-20, Math.min(20, this._integY));
         const ki_outer = this.kp_outer * 0.15;
 
         // Desired drone position: payload_pos + correction to reduce payload error
@@ -1066,8 +1066,8 @@ class SlidingModeController {
         const w_y = state[2] + L * Math.sin(state[8]);
         this._integX += (ref.pos[0] - w_x) * dt;
         this._integY += (ref.pos[1] - w_y) * dt;
-        this._integX = Math.max(-10, Math.min(10, this._integX));
-        this._integY = Math.max(-10, Math.min(10, this._integY));
+        this._integX = Math.max(-20, Math.min(20, this._integX));
+        this._integY = Math.max(-20, Math.min(20, this._integY));
         const ki = this.lambda * 0.2;
 
         // Surface uses drone position/velocity (stable negative feedback)
@@ -1232,8 +1232,8 @@ class MPCController {
         const w = weightPosition(state, L);
         this._integX += (w.x - ref.pos[0]) * dt;
         this._integY += (w.y - ref.pos[1]) * dt;
-        this._integX = Math.max(-10, Math.min(10, this._integX));
-        this._integY = Math.max(-10, Math.min(10, this._integY));
+        this._integX = Math.max(-20, Math.min(20, this._integX));
+        this._integY = Math.max(-20, Math.min(20, this._integY));
 
         // X-axis: 5-element error [x_d - payload_des, x_dot - vel_des, phi, phi_dot, xi]
         const x_err = [state[0] - ref.pos[0], state[1] - ref.vel[0], state[6], state[7], this._integX];
@@ -1536,8 +1536,8 @@ class TrajectoryMPCController {
         const w = weightPosition(state, L);
         this._integX += (w.x - ref.pos[0]) * dt;
         this._integY += (w.y - ref.pos[1]) * dt;
-        this._integX = Math.max(-10, Math.min(10, this._integX));
-        this._integY = Math.max(-10, Math.min(10, this._integY));
+        this._integX = Math.max(-20, Math.min(20, this._integX));
+        this._integY = Math.max(-20, Math.min(20, this._integY));
 
         let F_x, F_y;
 
@@ -1675,28 +1675,27 @@ export class Simulation {
         const { windMean, windStddev, windDir, windWander } = this.params;
         const sqrtDt = Math.sqrt(this.dt);
 
-        // Ornstein-Uhlenbeck process for wind strength (smooth variation)
-        const thetaStr = 2.0; // mean-reversion rate (~0.5s time constant)
+        // All wind changes (slider changes AND stochastic fluctuations) transition
+        // smoothly over ~3 seconds via OU mean-reversion.
+        const theta = 1 / 3;  // mean-reversion rate (3s time constant)
+
+        // Wind strength: smooth transition toward windMean, OU noise when stddev > 0
+        this._windStrState += theta * (windMean - this._windStrState) * this.dt;
         if (windStddev > 0) {
             const u1 = Math.random(), u2 = Math.random();
             const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
-            this._windStrState += thetaStr * (windMean - this._windStrState) * this.dt + windStddev * sqrtDt * z;
-            this._windStrState = Math.max(0, this._windStrState);
-        } else {
-            this._windStrState = windMean;
+            this._windStrState += windStddev * sqrtDt * z;
         }
+        this._windStrState = Math.max(0, this._windStrState);
 
-        // Ornstein-Uhlenbeck process for wind direction (smooth wander)
-        const thetaDir = 1.0; // slower mean-reversion for direction
+        // Wind direction: smooth transition toward windDir, OU wander when enabled
+        let diff = windDir - this._windDirState;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        this._windDirState += theta * diff * this.dt;
         if (windWander > 0) {
             const u1 = Math.random(), u2 = Math.random();
             const z = Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
-            // Compute shortest angular difference for mean-reversion
-            let diff = windDir - this._windDirState;
-            diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-            this._windDirState += thetaDir * diff * this.dt + windWander * sqrtDt * z;
-        } else {
-            this._windDirState = windDir;
+            this._windDirState += windWander * sqrtDt * z;
         }
 
         this.params.windX = this._windStrState * Math.cos(this._windDirState);
@@ -1727,8 +1726,8 @@ export class Simulation {
             const w = weightPosition(this.state, this.params.L);
             this._lqrIntX += (w.x - ref.pos[0]) * this.dt;
             this._lqrIntY += (w.y - ref.pos[1]) * this.dt;
-            this._lqrIntX = Math.max(-10, Math.min(10, this._lqrIntX));
-            this._lqrIntY = Math.max(-10, Math.min(10, this._lqrIntY));
+            this._lqrIntX = Math.max(-20, Math.min(20, this._lqrIntX));
+            this._lqrIntY = Math.max(-20, Math.min(20, this._lqrIntY));
         }
 
         let control;
