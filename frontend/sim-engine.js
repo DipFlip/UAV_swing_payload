@@ -960,14 +960,13 @@ class FeedbackLinController {
         // X-axis feedback linearization with payload tracking
         const phi_x = state[6], phix_dot = state[7];
         const sin_px = Math.sin(phi_x), cos_px = Math.cos(phi_x);
-        // Payload position and velocity
+        // Payload position (for P/I), drone velocity (for D — avoids amplifying pendulum oscillation)
         const w_x = state[0] + L * Math.sin(phi_x);
-        const w_dot_x = state[1] + L * Math.cos(phi_x) * phix_dot;
         // Integral of payload error
         this._integX += (ref.pos[0] - w_x) * dt;
         this._integX = Math.max(-10, Math.min(10, this._integX));
 
-        const vx = this.kp * (ref.pos[0] - w_x) + kd * (ref.vel[0] - w_dot_x)
+        const vx = this.kp * (ref.pos[0] - w_x) + kd * (ref.vel[0] - state[1])
             + ki * this._integX - this.ka * phi_x - this.kb * phix_dot;
         let F_x = (m_d + m_w * sin_px * sin_px) * vx
             - m_w * L * sin_px * phix_dot * phix_dot
@@ -977,11 +976,10 @@ class FeedbackLinController {
         const phi_y = state[8], phiy_dot = state[9];
         const sin_py = Math.sin(phi_y), cos_py = Math.cos(phi_y);
         const w_y = state[2] + L * Math.sin(phi_y);
-        const w_dot_y = state[3] + L * Math.cos(phi_y) * phiy_dot;
         this._integY += (ref.pos[1] - w_y) * dt;
         this._integY = Math.max(-10, Math.min(10, this._integY));
 
-        const vy = this.kp * (ref.pos[1] - w_y) + kd * (ref.vel[1] - w_dot_y)
+        const vy = this.kp * (ref.pos[1] - w_y) + kd * (ref.vel[1] - state[3])
             + ki * this._integY - this.ka * phi_y - this.kb * phiy_dot;
         let F_y = (m_d + m_w * sin_py * sin_py) * vy
             - m_w * L * sin_py * phiy_dot * phiy_dot
