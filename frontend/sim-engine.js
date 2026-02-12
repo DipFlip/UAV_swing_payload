@@ -251,8 +251,17 @@ function derivatives(state, control, params) {
         rhs_y0, rhs_y1
     );
 
-    // Vertical subsystem
-    const z_dd = (F_z - (m_d + m_w) * g) / (m_d + m_w);
+    // Vertical subsystem — coupled to pendulum via rope tension
+    // h = L*cos(phi_x)*cos(phi_y) is the vertical hang distance.
+    // d²h/dt² contributes centripetal and angular-acceleration forces.
+    const cxcy = cos_px * cos_py;
+    const d2h = -L * (
+        cxcy * (phix_dot * phix_dot + phiy_dot * phiy_dot)
+        - 2 * sin_px * sin_py * phix_dot * phiy_dot
+        + sin_px * cos_py * phix_dd
+        + cos_px * sin_py * phiy_dd
+    );
+    const z_dd = (F_z - (m_d + m_w) * g + m_w * d2h) / (m_d + m_w);
 
     return [xd_dot, x_dd, yd_dot, y_dd, zd_dot, z_dd, phix_dot, phix_dd, phiy_dot, phiy_dd];
 }
