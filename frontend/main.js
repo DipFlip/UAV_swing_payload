@@ -263,10 +263,10 @@ const ALGO_PARAMS = {
         { key: 'kp_phi', label: 'Angle Kp', min: 1, max: 30, step: 1, default: 10, optMin: 0.5, optMax: 50 },
     ],
     sliding: [
-        { key: 'lambda', label: 'Conv \u03bb', min: 0.5, max: 8, step: 0.5, default: 2, optMin: 0.05, optMax: 50 },
-        { key: 'alpha', label: 'Angle wt \u03b1', min: 1, max: 30, step: 1, default: 8, optMin: 0.1, optMax: 200 },
-        { key: 'kSwitch', label: 'Switch gain', min: 2, max: 50, step: 1, default: 15, optMin: 0.1, optMax: 300 },
-        { key: 'epsilon', label: 'Boundary \u03b5', min: 0.05, max: 2, step: 0.05, default: 0.5, optMin: 0.01, optMax: 10 },
+        { key: 'lambda', label: 'Conv \u03bb', min: 0.5, max: 8, step: 0.5, default: 3, optMin: 0.05, optMax: 50 },
+        { key: 'alpha', label: 'Swing damp', min: 10, max: 200, step: 10, default: 80, optMin: 1, optMax: 500 },
+        { key: 'kSwitch', label: 'Switch gain', min: 2, max: 50, step: 1, default: 20, optMin: 0.1, optMax: 300 },
+        { key: 'epsilon', label: 'Boundary \u03b5', min: 0.5, max: 5, step: 0.5, default: 3, optMin: 0.01, optMax: 10 },
     ],
     mpc: [
         { key: 'horizon', label: 'Horizon N', min: 5, max: 200, step: 5, default: 50, optMin: 2, optMax: 500 },
@@ -281,7 +281,7 @@ const ALGO_PARAMS = {
 };
 
 // --- localStorage persistence for tuned params ---
-const LS_KEY = 'dronehangsim_tuned_v2';
+const LS_KEY = 'dronehangsim_tuned_v3';
 
 function loadSavedParams() {
     try {

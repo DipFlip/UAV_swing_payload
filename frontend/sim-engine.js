@@ -963,38 +963,43 @@ class ZVDShaper {
 class SlidingModeController {
     constructor(params) {
         this.params = params;
-        this.lambda = 2;
-        this.alpha = 8;
-        this.kSwitch = 15;
-        this.epsilon = 0.5;
+        this.lambda = 3;
+        this.alpha = 80;       // swing damping: F_damp = alpha*phiDot
+        this.kSwitch = 20;     // switching gain
+        this.epsilon = 3.0;    // wide boundary layer for smooth control
         // Integral of payload position error for wind compensation
         this._integX = 0;
         this._integY = 0;
     }
 
-    _computeAxis(posErr, velErr, phi, phiDot, params) {
+    _computeAxis(dronePos, droneVel, phi, phiDot, refPos, refVel, params) {
         const { m_d, m_w, L, g } = params;
-        const beta = this.alpha * 0.375;
 
-        // Sliding surface: s = lambda*posErr + velErr + alpha*phi + beta*phiDot
-        // posErr/velErr are drone-based (stable), integral bias handles payload offset
-        const s = this.lambda * posErr + velErr + this.alpha * phi + beta * phiDot;
+        const posErr = dronePos - refPos;
+        const velErr = droneVel - refVel;
 
-        // Coefficients from linearized dynamics for equivalent control
-        const coeff_F = 1.0 / (m_d + m_w) - beta / ((m_d + m_w) * L);
+        // Sliding surface on drone position only — no angle terms.
+        // For a hanging pendulum, mixing angle into the surface creates
+        // conflicting objectives: the equivalent control fights gravity
+        // coupling, destabilizing the swing.
+        const s = this.lambda * posErr + velErr;
 
-        // Guard against singularity (when beta ≈ L)
-        if (Math.abs(coeff_F) < 1e-6) {
-            return -this.kSwitch * this._sat(s);
-        }
+        // Partial equivalent control — velocity damping only.
+        // We deliberately do NOT cancel the gravity coupling (m_w*g*phi)
+        // in x_dd: for a hanging pendulum, this coupling naturally pulls
+        // the drone toward the weight, which damps the swing. Canceling it
+        // would push the drone AWAY from the weight, destabilizing it.
+        const F_eq = -m_d * this.lambda * velErr;
 
-        // Terms not involving F in ds/dt:
-        const c_phi = m_w * g / (m_d + m_w) - beta * (m_d + m_w) * g / ((m_d + m_w) * L);
-        // Equivalent control from ds/dt = 0:
-        const F_eq = -(this.lambda * velErr + this.alpha * phiDot + c_phi * phi) / coeff_F;
+        // Switching term for robustness (disturbance rejection)
+        const F_sw = -this.kSwitch * this._sat(s);
 
-        // Total control: equivalent + switching
-        return F_eq - this.kSwitch * this._sat(s);
+        // Explicit swing damping: push drone to follow weight velocity.
+        // Positive phiDot (weight swinging +x) → positive F → negative phi_dd
+        // (decelerates swing). This is additive, not part of the surface.
+        const F_damp = this.alpha * phiDot;
+
+        return F_eq + F_sw + F_damp;
     }
 
     _sat(s) {
@@ -1013,7 +1018,7 @@ class SlidingModeController {
         this._integY += (ref.pos[1] - w_y) * dt;
         this._integX = Math.max(-10, Math.min(10, this._integX));
         this._integY = Math.max(-10, Math.min(10, this._integY));
-        const ki = this.lambda * 0.1;
+        const ki = this.lambda * 0.2;
 
         // Surface uses drone position/velocity (stable negative feedback)
         // Integral of payload error biases the reference to compensate wind offset
@@ -1021,10 +1026,10 @@ class SlidingModeController {
         const corrRefY = ref.pos[1] + ki * this._integY;
 
         let F_x = this._computeAxis(
-            state[0] - corrRefX, state[1] - ref.vel[0], state[6], state[7], this.params
+            state[0], state[1], state[6], state[7], corrRefX, ref.vel[0], this.params
         );
         let F_y = this._computeAxis(
-            state[2] - corrRefY, state[3] - ref.vel[1], state[8], state[9], this.params
+            state[2], state[3], state[8], state[9], corrRefY, ref.vel[1], this.params
         );
 
         // Vertical (simple PD)
