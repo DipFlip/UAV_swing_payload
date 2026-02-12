@@ -792,62 +792,117 @@ export function createLawnmowerTrajectory(size, z, speed, tension = 1) {
 class FlatnessController {
     constructor(params) {
         this.params = params;
-        // Feedback gains
-        this.kp = 12;
-        this.kd = 8;
-        this.kp_phi = 10;
-        this.kd_phi = 4;
-        this.kp_z = 50;
-        this.kd_z = 30;
-        // Integral of payload position error
+        // Tunable parameters
+        this.omega_c = 1.0;    // closed-loop bandwidth (rad/s)
+        this.zeta = 1.0;       // damping ratio (1.0 = critically damped)
+        // Integral of flat output error for wind disturbance rejection
         this._integX = 0;
         this._integY = 0;
+        // Disturbance observer: estimates wind bias in y_ddot
+        this._yDotPrevX = 0;
+        this._yDotPrevY = 0;
+        this._windBiasX = 0;
+        this._windBiasY = 0;
+        this._firstStep = true;
+    }
+
+    // Compute lateral force for one axis using differential flatness.
+    //
+    // Flat output: y = x_d + L*phi  (linearized payload position)
+    // Derivatives:  y_dot = x_dot + L*phi_dot
+    //               y_ddot = -g*phi + wind_bias  (model + DOB correction)
+    //               y_dddot = -g*phi_dot  (correct under constant wind)
+    // The force appears in y_ddddot (relative degree 4):
+    //   y_ddddot = g*F/(m_d*L) - omega_n^2 * y_ddot + disturbance
+    // Inversion: F = m_d*L/g * (v + omega_n^2 * y_ddot)
+    //   where v is the virtual input chosen by pole placement.
+    _computeAxisForce(y, y_dot, y_ddot, phi_dot, ref_pos, ref_vel, ref_acc, integ) {
+        const { L, g, m_d, m_w } = this.params;
+        const wc = this.omega_c;
+        const z = this.zeta;
+        const a = 0.5;  // integral pole at a*wc (relative to main poles)
+
+        // 5th-order pole placement: (s^2 + 2*z*wc*s + wc^2)^2 * (s + a*wc)
+        // All 5 gains designed together for well-damped 5th-order response.
+        const wc2 = wc * wc;
+        const wc3 = wc2 * wc;
+        const wc4 = wc2 * wc2;
+        const wc5 = wc4 * wc;
+        const k0 = wc4 * (1 + 4 * z * a);
+        const k1 = wc3 * (4 * z + (4 * z * z + 2) * a);
+        const k2 = wc2 * (4 * z * z + 2 + 4 * z * a);
+        const k3 = wc * (4 * z + a);
+        const ki = a * wc5;
+
+        // y_dddot: model-based, correct under constant wind since
+        // d(Fw/m_w)/dt = 0 → y_dddot = dy_ddot/dt = -g*phi_dot
+        const y_dddot = -g * phi_dot;
+
+        // Virtual input with integral action for wind disturbance rejection.
+        const v = -k0 * (y - ref_pos)
+                  - k1 * (y_dot - ref_vel)
+                  - k2 * (y_ddot - ref_acc)
+                  - k3 * y_dddot
+                  + ki * integ;
+
+        // Force inversion (y_ddot includes wind bias from DOB)
+        const omega_n_sq = (m_d + m_w) * g / (m_d * L);
+        return m_d * L / g * (v + omega_n_sq * y_ddot);
     }
 
     computeControl(state, ref, dt) {
         const { L, g, m_d, m_w, maxLateral, maxThrust } = this.params;
 
-        // Integral of payload position error for wind compensation
-        const w = weightPosition(state, L);
-        this._integX += (ref.pos[0] - w.x) * dt;
-        this._integY += (ref.pos[1] - w.y) * dt;
-        this._integX = Math.max(-10, Math.min(10, this._integX));
-        this._integY = Math.max(-10, Math.min(10, this._integY));
-        const ki = this.kp * 0.08;
+        // Flat output and its velocity (measured from state)
+        const y_x = state[0] + L * state[6];
+        const y_y = state[2] + L * state[8];
+        const yDot_x = state[1] + L * state[7];
+        const yDot_y = state[3] + L * state[9];
 
-        // Drone position target: goal + payload integral bias
-        // (The (L/g)*ref.acc position offset is omitted because with L=8m it creates
-        //  targets far beyond the goal, exceeding actuator limits and causing overshoot)
-        const x_d_des = ref.pos[0] + ki * this._integX;
-        const y_d_des = ref.pos[1] + ki * this._integY;
+        // Disturbance observer for wind estimation.
+        // Model-based y_ddot = -g*phi is correct without wind but misses
+        // the Fw/m_w term under wind. The DOB estimates this bias by
+        // filtering the difference between numerical and model y_ddot.
+        // Uses slow filter (wf = wc/2) to reject transient noise while
+        // capturing the quasi-DC wind offset.
+        if (this._firstStep) {
+            this._firstStep = false;
+        } else {
+            const yDdotRaw_x = (yDot_x - this._yDotPrevX) / dt;
+            const yDdotRaw_y = (yDot_y - this._yDotPrevY) / dt;
+            const yDdotModel_x = -g * state[6];
+            const yDdotModel_y = -g * state[8];
+            // LPF on (numerical - model) → converges to Fw/m_w under wind
+            const wf = this.omega_c * 0.5;
+            const alpha = dt * wf / (1 + dt * wf);
+            this._windBiasX += alpha * ((yDdotRaw_x - yDdotModel_x) - this._windBiasX);
+            this._windBiasY += alpha * ((yDdotRaw_y - yDdotModel_y) - this._windBiasY);
+        }
+        this._yDotPrevX = yDot_x;
+        this._yDotPrevY = yDot_y;
 
-        // Desired pendulum angle from flatness: phi = -acc / g (clamped)
-        const maxAcc = maxLateral / (m_d + m_w) * 0.4;
-        const acc_x = Math.max(-maxAcc, Math.min(maxAcc, ref.acc[0]));
-        const acc_y = Math.max(-maxAcc, Math.min(maxAcc, ref.acc[1]));
-        const phi_x_des = -acc_x / g;
-        const phi_y_des = -acc_y / g;
+        // Corrected y_ddot: model dynamics + estimated wind bias
+        const yDdot_x = -g * state[6] + this._windBiasX;
+        const yDdot_y = -g * state[8] + this._windBiasY;
 
-        // Feedforward force (still useful, clamped to actuator limits later)
-        const Fx_ff = (m_d + m_w) * ref.acc[0];
-        const Fy_ff = (m_d + m_w) * ref.acc[1];
+        // Integral of flat output error for residual disturbance rejection
+        this._integX += (ref.pos[0] - y_x) * dt;
+        this._integY += (ref.pos[1] - y_y) * dt;
+        this._integX = Math.max(-20, Math.min(20, this._integX));
+        this._integY = Math.max(-20, Math.min(20, this._integY));
 
-        // Feedback: PD on drone position + PD on pendulum angle
-        // Angle sign: +kp_phi*(phi-phi_des) creates stable stiffness through coupling
-        // (non-collocated feedback requires the opposite sign from intuition)
-        // Use sin() for angle term to bound correction at large angles
-        let F_x = Fx_ff
-            + this.kp * (x_d_des - state[0]) - this.kd * state[1]
-            + this.kp_phi * Math.sin(state[6] - phi_x_des) + this.kd_phi * state[7];
+        let F_x = this._computeAxisForce(
+            y_x, yDot_x, yDdot_x, state[7],
+            ref.pos[0], ref.vel[0], ref.acc[0], this._integX
+        );
+        let F_y = this._computeAxisForce(
+            y_y, yDot_y, yDdot_y, state[9],
+            ref.pos[1], ref.vel[1], ref.acc[1], this._integY
+        );
 
-        let F_y = Fy_ff
-            + this.kp * (y_d_des - state[2]) - this.kd * state[3]
-            + this.kp_phi * Math.sin(state[8] - phi_y_des) + this.kd_phi * state[9];
-
-        // Vertical (no pendulum coupling)
+        // Vertical (simple PD, no pendulum coupling needed)
         const zDes = ref.pos[2] + L;
-        let F_z = (m_d + m_w) * g
-            + this.kp_z * (zDes - state[4]) - this.kd_z * state[5];
+        let F_z = (m_d + m_w) * g + 50 * (zDes - state[4]) - 30 * state[5];
 
         F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
         F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
@@ -856,19 +911,14 @@ class FlatnessController {
         return [F_x, F_y, F_z];
     }
 
-    setAggression(aggr) {
-        const s = aggr * (0.5 + 0.5 * aggr);
-        this.kp = 12 * s;
-        this.kd = 8 * s;
-        this.kp_phi = 10 * s;
-        this.kd_phi = 4 * s;
-        this.kp_z = 50 * s;
-        this.kd_z = 30 * s;
-    }
-
     reset() {
         this._integX = 0;
         this._integY = 0;
+        this._yDotPrevX = 0;
+        this._yDotPrevY = 0;
+        this._windBiasX = 0;
+        this._windBiasY = 0;
+        this._firstStep = true;
     }
 }
 
@@ -1814,12 +1864,8 @@ export class Simulation {
                 this.cascade.kd_z = p.kd_inner * 1.5;
                 break;
             case 'flatness':
-                this.flatness.kp = p.kp;
-                this.flatness.kd = p.kp * 0.67;
-                this.flatness.kp_phi = p.kp_phi;
-                this.flatness.kd_phi = p.kp_phi * 0.4;
-                this.flatness.kp_z = p.kp * 4;
-                this.flatness.kd_z = p.kp * 2.5;
+                this.flatness.omega_c = p.omega_c;
+                this.flatness.zeta = p.zeta;
                 break;
             case 'sliding':
                 this.sliding.lambda = p.lambda;

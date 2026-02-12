@@ -259,8 +259,8 @@ const ALGO_PARAMS = {
         { key: 'kd_inner', label: 'Inner Kd', min: 5, max: 40, step: 1, default: 13, optMin: 0.5, optMax: 100 },
     ],
     flatness: [
-        { key: 'kp', label: 'Pos Kp', min: 2, max: 30, step: 1, default: 12, optMin: 0.5, optMax: 50 },
-        { key: 'kp_phi', label: 'Angle Kp', min: 1, max: 30, step: 1, default: 10, optMin: 0.5, optMax: 50 },
+        { key: 'omega_c', label: 'Bandwidth', min: 0.3, max: 2.0, step: 0.1, default: 1.0, optMin: 0.1, optMax: 5.0 },
+        { key: 'zeta', label: 'Damping \u03b6', min: 0.5, max: 2.0, step: 0.1, default: 1.0, optMin: 0.2, optMax: 3.0 },
     ],
     sliding: [
         { key: 'lambda', label: 'Conv \u03bb', min: 0.5, max: 8, step: 0.5, default: 3, optMin: 0.05, optMax: 50 },
