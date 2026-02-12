@@ -20,7 +20,7 @@ simLqr.setGoal(0, 0, 1);
 simPid.setGoal(0, 0, 1);
 
 // --- Algorithm name mapping for labels ---
-const ALGO_LABELS = { off: 'OFF', lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF', feedbacklin: 'FBL', sliding: 'SMC', mpc: 'MPC' };
+const ALGO_LABELS = { off: 'OFF', lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF', feedbacklin: 'FBL', sliding: 'SMC', mpc: 'MPC', trajmpc: 'TMPC' };
 
 const SIM_DT = 0.02;  // fixed sim timestep
 let simAccum = 0;      // fractional sim-time accumulator
@@ -278,6 +278,11 @@ const ALGO_PARAMS = {
         { key: 'qPos', label: 'Pos weight', min: 1, max: 100, step: 1, default: 10, optMin: 0.5, optMax: 1000 },
         { key: 'rCost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08, optMin: 0.001, optMax: 10 },
     ],
+    trajmpc: [
+        { key: 'horizon', label: 'Horizon N', min: 10, max: 200, step: 5, default: 100, optMin: 5, optMax: 500 },
+        { key: 'qPos', label: 'Pos weight', min: 1, max: 100, step: 1, default: 10, optMin: 0.5, optMax: 1000 },
+        { key: 'rCost', label: 'Ctrl cost', min: 0.01, max: 1, step: 0.01, default: 0.08, optMin: 0.001, optMax: 10 },
+    ],
 };
 
 // --- localStorage persistence for tuned params ---
@@ -520,15 +525,16 @@ const tuneA = document.getElementById('tune-a');
 const tuneB = document.getElementById('tune-b');
 
 tuneA.addEventListener('click', () => {
+    const algoType = algoA.value;
+    if (!ALGO_PARAMS[algoType]) return;
     showTuneConfig((costWeights) => {
-        const algoType = algoA.value;
         tuneA.disabled = true;
         tuneA.textContent = 'Tuning...';
         autoTune(algoType, ALGO_PARAMS[algoType], simLqr.params, SIM_DT, (pct) => {
             tuneA.textContent = `Tuning ${Math.round(pct * 100)}%`;
         }, costWeights).then(result => {
             saveTunedParams(algoType, result.params);
-            ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
+            (ALGO_PARAMS[algoType] || []).forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
             expandSliderRanges(algoType, result.params);
             droneParamValues.a[algoType] = result.params;
             droneParamValues.b[algoType] = { ...result.params };
@@ -541,15 +547,16 @@ tuneA.addEventListener('click', () => {
 });
 
 tuneB.addEventListener('click', () => {
+    const algoType = algoB.value;
+    if (!ALGO_PARAMS[algoType]) return;
     showTuneConfig((costWeights) => {
-        const algoType = algoB.value;
         tuneB.disabled = true;
         tuneB.textContent = 'Tuning...';
         autoTune(algoType, ALGO_PARAMS[algoType], simPid.params, SIM_DT, (pct) => {
             tuneB.textContent = `Tuning ${Math.round(pct * 100)}%`;
         }, costWeights).then(result => {
             saveTunedParams(algoType, result.params);
-            ALGO_PARAMS[algoType].forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
+            (ALGO_PARAMS[algoType] || []).forEach(p => { if (result.params[p.key] !== undefined) p.default = result.params[p.key]; });
             expandSliderRanges(algoType, result.params);
             droneParamValues.b[algoType] = result.params;
             droneParamValues.a[algoType] = { ...result.params };
@@ -644,7 +651,7 @@ tuneAllBtn.addEventListener('click', () => {
         }, costWeights).then(results => {
             for (const r of results) {
                 saveTunedParams(r.algoType, r.params);
-                ALGO_PARAMS[r.algoType].forEach(p => {
+                (ALGO_PARAMS[r.algoType] || []).forEach(p => {
                     if (r.params[p.key] !== undefined) p.default = r.params[p.key];
                 });
                 expandSliderRanges(r.algoType, r.params);

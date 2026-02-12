@@ -1272,6 +1272,309 @@ class MPCController {
     }
 }
 
+// ─── Trajectory-Preview MPC (time-varying affine LQR) ───────────────────────
+// True model-predictive controller that looks ahead along the known trajectory.
+// Caches Riccati matrices (P, K, A_cl) once when params change (heavy pass),
+// then runs a lightweight affine backward pass each frame using future reference
+// points to compute a feedforward term that anticipates upcoming turns.
+
+class TrajectoryMPCController {
+    constructor(params, dt) {
+        this.params = params;
+        this.dt = dt;
+        this.horizon = 100;   // 2 seconds of preview at 50Hz
+        this.qPos = 10;
+        this.rCost = 0.08;
+        this._dirty = true;
+
+        // Cached matrices (recomputed only when params change)
+        this._Ad = null;         // 5x5 discrete A
+        this._Bd = null;         // 5x1 discrete B
+        this._Bd_vec = null;     // Float64Array(5) column of Bd
+        this._P_cache = null;    // Array[N+1] of 5x5 P matrices
+        this._K_cache = null;    // Array[N] of 1x5 K matrices
+        this._Sinv_cache = null; // Float64Array(N) of scalar S^{-1}
+        this._AclT_cache = null; // Array[N] of 5x5 (A-BK)^T matrices
+
+        // Vertical gains (LTI, no preview needed)
+        this._K_vert = null;
+
+        // Trajectory reference (set by Simulation before computeControl)
+        this._trajectory = null;
+        this._trajTime = 0;
+
+        // Integral state
+        this._integX = 0;
+        this._integY = 0;
+    }
+
+    _recompute() {
+        const { m_d, m_w, L, g } = this.params;
+        const dt = this.dt;
+        const N = this.horizon;
+
+        // --- Augmented lateral subsystem (5x5): [x_d, x_dot, phi, phi_dot, xi] ---
+        const A_lat = matFromArray(4, 4, [
+            0, 1, 0, 0,
+            0, 0, m_w * g / m_d, 0,
+            0, 0, 0, 1,
+            0, 0, -(m_d + m_w) * g / (m_d * L), 0,
+        ]);
+        const B_lat4 = matFromArray(4, 1, [0, 1 / m_d, 0, -1 / (m_d * L)]);
+
+        const A_aug = matCreate(5, 5);
+        for (let i = 0; i < 4; i++)
+            for (let j = 0; j < 4; j++)
+                matSet(A_aug, i, j, matGet(A_lat, i, j));
+        matSet(A_aug, 4, 0, 1);
+        matSet(A_aug, 4, 2, L);
+
+        const B_aug = matCreate(5, 1);
+        for (let i = 0; i < 4; i++)
+            matSet(B_aug, i, 0, matGet(B_lat4, i, 0));
+
+        // Discretize: Ad = I + A*dt, Bd = B*dt
+        const I5 = matIdentity(5);
+        this._Ad = matAdd(I5, matScale(A_aug, dt));
+        this._Bd = matScale(B_aug, dt);
+        this._Bd_vec = new Float64Array(5);
+        for (let i = 0; i < 5; i++) this._Bd_vec[i] = matGet(this._Bd, i, 0);
+
+        const AdT = matTranspose(this._Ad);
+
+        // Q with payload-position cross-terms (same structure as MPC/LQR)
+        const qp = this.qPos;
+        const qphi = qp * 0.3;
+        const Q = matFromArray(5, 5, [
+            qp,     0,          qp*L,     0,                  0,
+            0,      qp*0.25,    0,        qp*0.25*L,          0,
+            qp*L,   0,          qp*L*L,   0,                  0,
+            0,      qp*0.25*L,  0,        qp*0.25*L*L + qphi, 0,
+            0,      0,          0,        0,                  qp*0.1,
+        ]);
+        this._Q = Q;
+        this._R_val = this.rCost;
+        const Qf = matScale(Q, 2);
+
+        // Backward Riccati pass — cache P, K, Sinv, AclT for all horizon steps
+        this._P_cache = new Array(N + 1);
+        this._K_cache = new Array(N);
+        this._Sinv_cache = new Float64Array(N);
+        this._AclT_cache = new Array(N);
+
+        this._P_cache[N] = Qf;
+
+        for (let k = N - 1; k >= 0; k--) {
+            const P = this._P_cache[k + 1];
+
+            // BtP = Bd^T * P (1x5)
+            const BtP = matMul(matTranspose(this._Bd), P);
+
+            // S = R + B^T P B (scalar)
+            let BtPB = 0;
+            for (let i = 0; i < 5; i++) BtPB += matGet(BtP, 0, i) * this._Bd_vec[i];
+            const S = this._R_val + BtPB;
+            const Sinv = 1 / S;
+            this._Sinv_cache[k] = Sinv;
+
+            // K = Sinv * BtP * Ad (1x5)
+            const K = matScale(matMul(BtP, this._Ad), Sinv);
+            this._K_cache[k] = K;
+
+            // P_k = Q + Ad^T (P - Sinv * PBd PBd^T) Ad
+            const PBd = matMul(P, this._Bd);
+            const correction = matScale(matMul(PBd, matTranspose(PBd)), Sinv);
+            const P_minus = matSub(P, correction);
+            this._P_cache[k] = matAdd(Q, matMul(matMul(AdT, P_minus), this._Ad));
+
+            // A_cl^T = (Ad - Bd * K)^T
+            const Acl = matCopy(this._Ad);
+            for (let i = 0; i < 5; i++)
+                for (let j = 0; j < 5; j++)
+                    Acl.d[i * 5 + j] -= this._Bd_vec[i] * matGet(K, 0, j);
+            this._AclT_cache[k] = matTranspose(Acl);
+        }
+
+        // --- Vertical subsystem (2x2, cached gain, same as regular MPC) ---
+        const A_vert = matFromArray(2, 2, [0, 1, 0, 0]);
+        const B_vert = matFromArray(2, 1, [0, 1 / (m_d + m_w)]);
+        const I2 = matIdentity(2);
+        const Ad_vert = matAdd(I2, matScale(A_vert, dt));
+        const Bd_vert = matScale(B_vert, dt);
+        const Q_vert = matFromArray(2, 2, [this.qPos * 25, 0, 0, this.qPos * 8]);
+        const R_vert = matFromArray(1, 1, [this.rCost]);
+        const Qf_vert = matScale(Q_vert, 2);
+
+        let Pv = matCopy(Qf_vert);
+        const Ad_vertT = matTranspose(Ad_vert);
+        const Bd_vertT = matTranspose(Bd_vert);
+
+        for (let i = N - 1; i >= 0; i--) {
+            const BtP = matMul(Bd_vertT, Pv);
+            const BtPBpR = matAdd(R_vert, matMul(BtP, Bd_vert));
+            const BtPA = matMul(BtP, Ad_vert);
+            const Kv = matMul(matInverse(BtPBpR), BtPA);
+            if (i === 0) this._K_vert = Kv;
+            Pv = matAdd(Q_vert, matSub(
+                matMul(Ad_vertT, matMul(Pv, Ad_vert)),
+                matMul(matMul(Ad_vertT, matMul(Pv, Bd_vert)), Kv)
+            ));
+        }
+
+        this._dirty = false;
+    }
+
+    /**
+     * Solve one lateral axis with trajectory preview.
+     * Runs the lightweight affine backward pass using cached Riccati matrices.
+     * @param {number[]} x_state - [pos, vel, phi, phiDot, integ]
+     * @param {Object[]} refs - Array of N+1 trajectory reference objects {pos, vel, acc}
+     * @param {number} axis - 0 for X, 1 for Y
+     * @returns {number} - optimal force for this axis
+     */
+    _solveAxisPreview(x_state, refs, axis) {
+        const Ad = this._Ad;
+        const Bd_vec = this._Bd_vec;
+        const N = Math.min(this.horizon, refs.length - 1);
+
+        // Affine backward pass: compute feedforward v_0 from future reference evolution
+        // s_k = A_cl_k^T * (P_{k+1} * d_k + s_{k+1})
+        // v_k = Sinv_k * Bd^T * (P_{k+1} * d_k + s_{k+1})
+        // d_k = Ad * r_k - r_{k+1}  (reference mismatch at step k)
+        let s = new Float64Array(5);  // s_N = 0
+        let v0 = 0;
+
+        for (let k = N - 1; k >= 0; k--) {
+            const P = this._P_cache[k + 1];
+            const Sinv = this._Sinv_cache[k];
+            const AclT = this._AclT_cache[k];
+
+            // Reference states: r_k = [pos, vel, 0, 0, 0]
+            const r_pos = refs[k].pos[axis];
+            const r_vel = refs[k].vel[axis];
+            const r1_pos = refs[k + 1].pos[axis];
+            const r1_vel = refs[k + 1].vel[axis];
+
+            // d_k = Ad * r_k - r_{k+1} (only pos/vel elements of r_k are non-zero)
+            const d = new Float64Array(5);
+            for (let i = 0; i < 5; i++) {
+                d[i] = matGet(Ad, i, 0) * r_pos + matGet(Ad, i, 1) * r_vel;
+            }
+            d[0] -= r1_pos;
+            d[1] -= r1_vel;
+
+            // Pd_plus_s = P_{k+1} * d_k + s_{k+1}
+            const Pd_plus_s = new Float64Array(5);
+            for (let i = 0; i < 5; i++) {
+                let sum = s[i];
+                for (let j = 0; j < 5; j++) sum += matGet(P, i, j) * d[j];
+                Pd_plus_s[i] = sum;
+            }
+
+            // v_k = Sinv * Bd^T * Pd_plus_s (scalar)
+            let Bt_Pds = 0;
+            for (let i = 0; i < 5; i++) Bt_Pds += Bd_vec[i] * Pd_plus_s[i];
+            const v_k = Sinv * Bt_Pds;
+
+            if (k === 0) v0 = v_k;
+
+            // s_k = A_cl_k^T * Pd_plus_s
+            const s_new = new Float64Array(5);
+            for (let i = 0; i < 5; i++) {
+                let sum = 0;
+                for (let j = 0; j < 5; j++) sum += matGet(AclT, i, j) * Pd_plus_s[j];
+                s_new[i] = sum;
+            }
+            s = s_new;
+        }
+
+        // Control: u = -K_0 * (x - r_0) - v_0
+        const K0 = this._K_cache[0];
+        const r0_pos = refs[0].pos[axis];
+        const r0_vel = refs[0].vel[axis];
+
+        let u = -v0;
+        u -= matGet(K0, 0, 0) * (x_state[0] - r0_pos);
+        u -= matGet(K0, 0, 1) * (x_state[1] - r0_vel);
+        u -= matGet(K0, 0, 2) * x_state[2];
+        u -= matGet(K0, 0, 3) * x_state[3];
+        u -= matGet(K0, 0, 4) * x_state[4];
+
+        return u;
+    }
+
+    setTrajectory(traj, trajTime) {
+        this._trajectory = traj;
+        this._trajTime = trajTime;
+    }
+
+    computeControl(state, ref, dt) {
+        if (this._dirty) this._recompute();
+
+        const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
+
+        // Update integral of payload error
+        const w = weightPosition(state, L);
+        this._integX += (w.x - ref.pos[0]) * dt;
+        this._integY += (w.y - ref.pos[1]) * dt;
+        this._integX = Math.max(-10, Math.min(10, this._integX));
+        this._integY = Math.max(-10, Math.min(10, this._integY));
+
+        let F_x, F_y;
+
+        if (this._trajectory) {
+            // Sample future reference points along trajectory
+            const N = this.horizon;
+            const refs = new Array(N + 1);
+            for (let k = 0; k <= N; k++) {
+                refs[k] = this._trajectory.evaluate(this._trajTime + k * this.dt);
+            }
+
+            // Solve each lateral axis with trajectory preview
+            F_x = this._solveAxisPreview(
+                [state[0], state[1], state[6], state[7], this._integX],
+                refs, 0
+            );
+            F_y = this._solveAxisPreview(
+                [state[2], state[3], state[8], state[9], this._integY],
+                refs, 1
+            );
+        } else {
+            // No trajectory: fall back to constant-reference (same as regular MPC)
+            const K0 = this._K_cache[0];
+            const x_err = [state[0] - ref.pos[0], state[1] - ref.vel[0], state[6], state[7], this._integX];
+            F_x = 0;
+            for (let i = 0; i < 5; i++) F_x -= matGet(K0, 0, i) * x_err[i];
+
+            const y_err = [state[2] - ref.pos[1], state[3] - ref.vel[1], state[8], state[9], this._integY];
+            F_y = 0;
+            for (let i = 0; i < 5; i++) F_y -= matGet(K0, 0, i) * y_err[i];
+        }
+
+        // Vertical (no preview, simple cached gain)
+        const z_err = [state[4] - (ref.pos[2] + L), state[5] - ref.vel[2]];
+        let F_z = 0;
+        for (let i = 0; i < 2; i++) F_z -= matGet(this._K_vert, 0, i) * z_err[i];
+        F_z += (m_d + m_w) * g;
+
+        F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
+        F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
+        F_z = Math.max(0, Math.min(maxThrust, F_z));
+
+        return [F_x, F_y, F_z];
+    }
+
+    markDirty() { this._dirty = true; }
+
+    reset() {
+        this._dirty = true;
+        this._integX = 0;
+        this._integY = 0;
+        this._trajectory = null;
+        this._trajTime = 0;
+    }
+}
+
 // ─── Energy-Based Swing Damping (layerable on any controller) ───────────────
 // Adds force proportional to phi_dot to dissipate pendulum energy.
 // F_damp = k_e * phi_dot (same direction as angular velocity → damps swing)
@@ -1327,6 +1630,9 @@ export class Simulation {
 
         // MPC controller
         this.mpc = new MPCController(this.params, this.dt);
+
+        // Trajectory-preview MPC controller
+        this.trajmpc = new TrajectoryMPCController(this.params, this.dt);
 
         // ZVD Input Shaper
         this.zvdShaper = new ZVDShaper(this.params, this.dt);
@@ -1432,6 +1738,14 @@ export class Simulation {
             case 'mpc':
                 control = this.mpc.computeControl(this.state, ref, this.dt);
                 break;
+            case 'trajmpc':
+                if (this._useTrajectory && this._trajectory) {
+                    this.trajmpc.setTrajectory(this._trajectory, this.time - this._trajStartTime);
+                } else {
+                    this.trajmpc.setTrajectory(null, 0);
+                }
+                control = this.trajmpc.computeControl(this.state, ref, this.dt);
+                break;
             default: // 'lqr'
                 control = computeLqrControl(this.state, ref, this.K_lat, this.K_vert, this.params, this._lqrIntX, this._lqrIntY);
                 break;
@@ -1521,7 +1835,9 @@ export class Simulation {
         this.cascade.reset();
         this.flatness.reset();
         this.feedbacklin.reset();
+        this.sliding.reset();
         this.mpc.reset();
+        this.trajmpc.reset();
     }
 
     setSwingDamping(enabled) {
@@ -1598,6 +1914,12 @@ export class Simulation {
                 this.mpc.rCost = p.rCost;
                 this.mpc.markDirty();
                 break;
+            case 'trajmpc':
+                this.trajmpc.horizon = Math.round(p.horizon);
+                this.trajmpc.qPos = p.qPos;
+                this.trajmpc.rCost = p.rCost;
+                this.trajmpc.markDirty();
+                break;
         }
     }
 
@@ -1656,6 +1978,8 @@ export class Simulation {
         this.sliding.params = this.params;
         this.mpc.params = this.params;
         this.mpc.markDirty();
+        this.trajmpc.params = this.params;
+        this.trajmpc.markDirty();
         // Recompute LQR gains for new params
         const { K_lat, K_vert } = computeLqrGains(this.params);
         this.K_lat = K_lat;
@@ -1674,6 +1998,7 @@ export class Simulation {
         this.feedbacklin.reset();
         this.sliding.reset();
         this.mpc.reset();
+        this.trajmpc.reset();
         this.zvdShaper.reset(this.params);
         this._refSmoother.reset([0, 0, 0]);
         this._trajectory = null;

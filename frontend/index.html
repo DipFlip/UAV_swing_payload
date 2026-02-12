@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
     <link rel="icon" href="favicon.ico" type="image/x-icon">
-    <link rel="stylesheet" href="style.css?v=4.13">
+    <link rel="stylesheet" href="style.css?v=4.15">
 </head>
 <body>
     <div id="container">
@@ -20,7 +20,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v4.14</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v4.15</div>
             </div>
         </div>
 
@@ -106,6 +106,7 @@
                             <option value="feedbacklin">Feedback Lin</option>
                             <option value="sliding">Sliding Mode</option>
                             <option value="mpc">MPC</option>
+                            <option value="trajmpc">Traj MPC</option>
                         </select>
                         <label class="cb-label" title="Energy-based swing damping: adds force proportional to pendulum angular velocity to dissipate swing energy. Can be layered on any algorithm."><input type="checkbox" id="swing-a"> Anti-swing</label>
                         <label class="cb-label" title="ZVD Input Shaping: pre-filters the goal signal with 3 impulses timed at the pendulum natural frequency to eliminate residual swing."><input type="checkbox" id="shaping-a"> Input shaping</label>
@@ -126,6 +127,7 @@
                             <option value="feedbacklin">Feedback Lin</option>
                             <option value="sliding">Sliding Mode</option>
                             <option value="mpc">MPC</option>
+                            <option value="trajmpc">Traj MPC</option>
                         </select>
                         <label class="cb-label" title="Energy-based swing damping: adds force proportional to pendulum angular velocity to dissipate swing energy. Can be layered on any algorithm."><input type="checkbox" id="swing-b"> Anti-swing</label>
                         <label class="cb-label" title="ZVD Input Shaping: pre-filters the goal signal with 3 impulses timed at the pendulum natural frequency to eliminate residual swing."><input type="checkbox" id="shaping-b"> Input shaping</label>
@@ -206,6 +208,7 @@
                 <p><a href="https://en.wikipedia.org/wiki/Feedback_linearization" target="_blank"><strong>Feedback Lin</strong></a> (FBL &mdash; Feedback Linearization) &mdash; Applies a state-dependent nonlinear transformation that cancels the sin/cos coupling between the drone and pendulum, making the system behave like a simple double integrator. Once linearized, a PD controller drives position and angle to zero. The force law is: <code>F = (m<sub>d</sub> + m<sub>w</sub>sin&sup2;&phi;) &middot; v &minus; m<sub>w</sub>L sin&phi; &middot; &phi;&#x307;&sup2; &minus; m<sub>w</sub>g sin&phi; cos&phi;</code>, where <code>v</code> is the PD virtual input. Works well for moderate angles but demands large forces near singularities. Tunable: <em>Pos Kp</em> (position tracking), <em>Angle Ka</em> (pendulum angle suppression), <em>Rate Kb</em> (angular rate damping).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Sliding_mode_control" target="_blank"><strong>Sliding Mode</strong></a> (SMC) &mdash; Defines a sliding surface combining position error, velocity, pendulum angle, and angular rate: <code>s = &lambda;(x &minus; x<sub>des</sub>) + x&#x307; + &alpha;&phi; + &beta;&phi;&#x307;</code>. Computes an equivalent control to keep the state on the surface, plus a switching term <code>&minus;k&middot;sat(s/&epsilon;)</code> that forces trajectories toward it. Extremely robust to model uncertainty (wrong mass, rope length). A boundary layer &epsilon; smooths the switching to reduce force chattering. Tunable: <em>Convergence &lambda;</em> (surface slope), <em>Angle wt &alpha;</em> (pendulum influence), <em>Switch gain k</em> (correction strength), <em>Boundary &epsilon;</em> (chattering vs. precision trade-off).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Model_predictive_control" target="_blank"><strong>MPC</strong></a> (Model Predictive Control) &mdash; Solves a finite-horizon optimal control problem by running a backward <a href="https://en.wikipedia.org/wiki/Riccati_equation" target="_blank">discrete Riccati recursion</a> over N timesteps. At each step it minimizes a quadratic cost on position error, swing, and control effort, yielding a gain matrix applied to the current state error. Unlike infinite-horizon LQR, MPC&rsquo;s gains depend on the horizon length: short horizons (N=5) produce sluggish, conservative control; long horizons (N=200) converge to LQR-like performance. Gains are cached and only recomputed when sliders change. Tunable: <em>Horizon N</em> (planning depth), <em>Pos weight</em> (tracking aggressiveness), <em>Ctrl cost</em> (force penalty).</p>
+                <p><a href="https://en.wikipedia.org/wiki/Model_predictive_control" target="_blank"><strong>Traj MPC</strong></a> (Trajectory-Preview MPC) &mdash; A true model-predictive controller that looks ahead along the known trajectory. Unlike the standard MPC which only sees the current reference point, Traj MPC samples the future trajectory over a configurable preview horizon (N timesteps) and computes time-varying feedforward terms that anticipate upcoming turns and accelerations. Internally uses a two-phase architecture: a cached backward Riccati recursion (recomputed only when parameters change) stores optimal gain matrices for each horizon step, then a lightweight affine backward pass runs every frame to compute the preview feedforward from the future reference sequence. Especially effective on the Square and Mower patterns where it pre-steers into corners rather than reacting to them. Without an active trajectory pattern, falls back to standard MPC behavior. Tunable: <em>Horizon N</em> (preview depth in timesteps &mdash; 100 = 2 seconds ahead at 50Hz), <em>Pos weight</em> (tracking aggressiveness), <em>Ctrl cost</em> (force penalty).</p>
                 <p><strong>Input Shaping</strong> (IS &mdash; ZVD Shaper) &mdash; A pre-filter that reshapes the goal signal to eliminate residual pendulum swing. Uses the coupled pendulum frequency <code>&omega; = &radic;((m<sub>d</sub>+m<sub>w</sub>)g / (m<sub>d</sub>L))</code> to compute the natural period T, then convolves the reference with 3 ZVD impulses: <code>shaped(t) = 0.25&middot;goal(t) + 0.5&middot;goal(t&minus;T/2) + 0.25&middot;goal(t&minus;T)</code>. A pre-smoother converts step changes into smooth ramps before ZVD processing, ensuring smooth drone motion while maintaining swing cancellation. Can be layered on any controller via the checkbox. The trade-off is a delay of ~T seconds in the goal response. Automatically adapts when mass or rope length changes.</p>
                 <p><strong>Anti-Swing Damping</strong> (SD) &mdash; An energy-based damping layer that can be added on top of any controller. It adds a lateral force proportional to the pendulum&rsquo;s angular velocity: <code>F<sub>damp</sub> = k &middot; &phi;&#x307;</code>. This force &ldquo;chases&rdquo; the swing direction, which dissipates the pendulum&rsquo;s kinetic energy and damps oscillations. The gain k scales automatically with system mass and rope length. Particularly useful with PID and Cascade PD, which don&rsquo;t inherently account for swing dynamics.</p>
                 <p><strong>State variables</strong> &mdash; The simulation tracks 10 state variables: drone position (x, y, z), drone velocity (x&#x307;, y&#x307;, z&#x307;), and two pendulum swing angles &phi;<sub>x</sub> and &phi;<sub>y</sub> with their angular velocities &phi;&#x307;<sub>x</sub> and &phi;&#x307;<sub>y</sub>. The angles &phi; describe how far the rope deviates from vertical in each lateral axis, measured in radians (displayed in degrees in the HUD). Physics are integrated using a 4th-order <a href="https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods" target="_blank">Runge-Kutta</a> (RK4) method at 50 Hz.</p>
@@ -221,6 +224,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=4.13"></script>
+    <script type="module" src="main.js?v=4.15"></script>
 </body>
 </html>
