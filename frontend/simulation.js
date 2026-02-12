@@ -140,7 +140,7 @@ export function updateScene(sceneObjects, data, algoA, algoB) {
 
     if (lqrOn) {
         const lqrP = updateDroneSystem(lqr, data.lqr.drone, data.lqr.weight, data.lqr.control);
-        lqrLabel.position.set(lqrP.dronePos.x, lqrP.dronePos.y + 1.2, lqrP.dronePos.z);
+        lqrLabel.position.set(lqrP.dronePos.x, lqrP.dronePos.y + 1.0, lqrP.dronePos.z);
         pushTrailPoint(trails.lqrDrone, lqrP.dronePos.x, lqrP.dronePos.y, lqrP.dronePos.z);
         pushTrailPoint(trails.lqrWeight, lqrP.weightPos.x, lqrP.weightPos.y, lqrP.weightPos.z);
     }
@@ -148,7 +148,7 @@ export function updateScene(sceneObjects, data, algoA, algoB) {
 
     if (pidOn) {
         const pidP = updateDroneSystem(pid, data.pid.drone, data.pid.weight, data.pid.control);
-        pidLabel.position.set(pidP.dronePos.x, pidP.dronePos.y + 0.5, pidP.dronePos.z);
+        pidLabel.position.set(pidP.dronePos.x, pidP.dronePos.y + 0.7, pidP.dronePos.z);
         pushTrailPoint(trails.pidDrone, pidP.dronePos.x, pidP.dronePos.y, pidP.dronePos.z);
         pushTrailPoint(trails.pidWeight, pidP.weightPos.x, pidP.weightPos.y, pidP.weightPos.z);
     }

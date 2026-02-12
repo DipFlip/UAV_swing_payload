@@ -698,9 +698,11 @@ document.getElementById('btn-reset').addEventListener('click', () => {
     stopPattern();
     simLqr.reset();
     simPid.reset();
+    simLqr.setGoal(0, 0, 1);
+    simPid.setGoal(0, 0, 1);
     clearTrails(sceneObjects.trails);
     sliderX.value = 0; xVal.textContent = '0.0';
     sliderY.value = 0; yVal.textContent = '0.0';
-    sliderZ.value = 0; zVal.textContent = '0.0';
+    sliderZ.value = 1; zVal.textContent = '1.0';
     prevData = null;
 });
