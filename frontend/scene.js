@@ -301,9 +301,15 @@ export function createScene(canvas) {
         ctx.fillText(text, 64, 28);
 
         const texture = new THREE.CanvasTexture(canvas2d);
-        const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const spriteMat = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+        });
         const sprite = new THREE.Sprite(spriteMat);
         sprite.scale.set(1.6, 0.5, 1);
+        sprite.renderOrder = 999;
         scene.add(sprite);
         return sprite;
     }
