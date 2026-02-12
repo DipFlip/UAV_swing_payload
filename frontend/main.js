@@ -253,19 +253,19 @@ const ALGO_PARAMS = {
         { key: 'kd', label: 'Kd', min: 5, max: 80, step: 1, default: 24, optMin: 0.5, optMax: 500 },
     ],
     cascade: [
-        { key: 'kp_outer', label: 'Outer Kp', min: 0.2, max: 5, step: 0.1, default: 1.8, optMin: 0.01, optMax: 50 },
-        { key: 'kd_outer', label: 'Outer Kd', min: 0.2, max: 5, step: 0.1, default: 1.2, optMin: 0.01, optMax: 50 },
-        { key: 'kp_inner', label: 'Inner Kp', min: 5, max: 80, step: 1, default: 30, optMin: 0.5, optMax: 500 },
-        { key: 'kd_inner', label: 'Inner Kd', min: 5, max: 60, step: 1, default: 20, optMin: 0.5, optMax: 500 },
+        { key: 'kp_outer', label: 'Outer Kp', min: 0.1, max: 3, step: 0.1, default: 0.5, optMin: 0.01, optMax: 5 },
+        { key: 'kd_outer', label: 'Outer Kd', min: 0.1, max: 3, step: 0.1, default: 1.0, optMin: 0.01, optMax: 5 },
+        { key: 'kp_inner', label: 'Inner Kp', min: 5, max: 60, step: 1, default: 20, optMin: 0.5, optMax: 100 },
+        { key: 'kd_inner', label: 'Inner Kd', min: 5, max: 40, step: 1, default: 13, optMin: 0.5, optMax: 100 },
     ],
     flatness: [
-        { key: 'kp', label: 'Pos Kp', min: 5, max: 80, step: 1, default: 25, optMin: 0.5, optMax: 500 },
-        { key: 'kp_phi', label: 'Angle Kp', min: 5, max: 100, step: 1, default: 40, optMin: 0.5, optMax: 500 },
+        { key: 'kp', label: 'Pos Kp', min: 2, max: 30, step: 1, default: 12, optMin: 0.5, optMax: 50 },
+        { key: 'kp_phi', label: 'Angle Kp', min: 1, max: 30, step: 1, default: 10, optMin: 0.5, optMax: 50 },
     ],
     feedbacklin: [
-        { key: 'kp', label: 'Pos Kp', min: 2, max: 40, step: 1, default: 12, optMin: 0.1, optMax: 200 },
-        { key: 'ka', label: 'Angle Ka', min: 5, max: 80, step: 1, default: 30, optMin: 0.5, optMax: 500 },
-        { key: 'kb', label: 'Rate Kb', min: 2, max: 30, step: 1, default: 12, optMin: 0.1, optMax: 200 },
+        { key: 'kp', label: 'Pos Kp', min: 0.5, max: 8, step: 0.5, default: 2, optMin: 0.5, optMax: 10 },
+        { key: 'ka', label: 'Angle Ka', min: 0, max: 10, step: 0.5, default: 5, optMin: 0, optMax: 15 },
+        { key: 'kb', label: 'Rate Kb', min: 0.5, max: 8, step: 0.5, default: 1, optMin: 0.1, optMax: 10 },
     ],
     sliding: [
         { key: 'lambda', label: 'Conv \u03bb', min: 0.5, max: 8, step: 0.5, default: 2, optMin: 0.05, optMax: 50 },

@@ -402,21 +402,33 @@ class PIDController {
         this.pidX = new PIDAxis(22, 3, 24);
         this.pidY = new PIDAxis(22, 3, 24);
         this.pidZ = new PIDAxis(50, 10, 30);
+        // Slow integral of payload position error for wind compensation
+        this._payloadIntX = 0;
+        this._payloadIntY = 0;
     }
 
     computeControl(state, ref, dt) {
         const { L, m_d, m_w, g } = this.params;
-        // Track payload position for P/I error
-        const w = weightPosition(state, L);
-        const ex = ref.pos[0] - w.x;
-        const ey = ref.pos[1] - w.y;
+
+        // PID tracks drone position (stable negative feedback)
+        const ex = ref.pos[0] - state[0];
+        const ey = ref.pos[1] - state[2];
         const ez = (ref.pos[2] + L) - state[4];
 
-        // Derivative-on-measurement uses drone position (not payload) to
-        // avoid amplifying pendulum oscillations through the Kd term
         let F_x = this.pidX.step(ex, state[0], dt);
         let F_y = this.pidY.step(ey, state[2], dt);
         let F_z = this.pidZ.step(ez, state[4], dt);
+
+        // Slow integral of payload error: under wind the payload drifts from
+        // the goal, this integral biases the drone upwind to compensate
+        const w = weightPosition(state, L);
+        this._payloadIntX += (ref.pos[0] - w.x) * dt;
+        this._payloadIntY += (ref.pos[1] - w.y) * dt;
+        this._payloadIntX = Math.max(-10, Math.min(10, this._payloadIntX));
+        this._payloadIntY = Math.max(-10, Math.min(10, this._payloadIntY));
+        const ki_wind = this.pidX.kp * 0.15;
+        F_x += ki_wind * this._payloadIntX;
+        F_y += ki_wind * this._payloadIntY;
 
         // Acceleration feedforward
         F_x += (m_d + m_w) * ref.acc[0];
@@ -436,6 +448,8 @@ class PIDController {
         this.pidX.reset();
         this.pidY.reset();
         this.pidZ.reset();
+        this._payloadIntX = 0;
+        this._payloadIntY = 0;
     }
 }
 
@@ -446,17 +460,15 @@ class PIDController {
 class CascadePDController {
     constructor(params) {
         this.params = params;
-        // Outer loop gains (payload position → drone offset)
-        this.kp_outer = 1.8;
-        this.kd_outer = 1.2;
+        // Outer loop gains (payload error → drone offset correction)
+        this.kp_outer = 0.5;
+        this.kd_outer = 1.0;
         // Inner loop gains (drone position → force)
-        this.kp_inner = 30;
-        this.kd_inner = 20;
+        this.kp_inner = 20;
+        this.kd_inner = 13;
         // Vertical
         this.kp_z = 50;
         this.kd_z = 30;
-        this.prevPayloadX = null;
-        this.prevPayloadY = null;
         // Integral accumulators for payload position error
         this._integX = 0;
         this._integY = 0;
@@ -469,17 +481,8 @@ class CascadePDController {
         const w = weightPosition(state, L);
         const goalDroneZ = ref.pos[2] + L;
 
-        // Payload velocity estimate (derivative on measurement)
-        let wdx = 0, wdy = 0;
-        if (this.prevPayloadX !== null && dt > 0) {
-            wdx = (w.x - this.prevPayloadX) / dt;
-            wdy = (w.y - this.prevPayloadY) / dt;
-        }
-        this.prevPayloadX = w.x;
-        this.prevPayloadY = w.y;
-
         // Outer loop: desired drone position based on payload error
-        // Include ref.vel for improved tracking of moving references
+        // Uses drone velocity (cleaner than numerically differentiating payload pos)
         const payload_ex = ref.pos[0] - w.x;
         const payload_ey = ref.pos[1] - w.y;
 
@@ -490,8 +493,9 @@ class CascadePDController {
         this._integY = Math.max(-10, Math.min(10, this._integY));
         const ki_outer = this.kp_outer * 0.15;
 
-        const drone_x_des = w.x + this.kp_outer * payload_ex + this.kd_outer * (ref.vel[0] - wdx) + ki_outer * this._integX;
-        const drone_y_des = w.y + this.kp_outer * payload_ey + this.kd_outer * (ref.vel[1] - wdy) + ki_outer * this._integY;
+        // Desired drone position: payload_pos + correction to reduce payload error
+        const drone_x_des = w.x + this.kp_outer * payload_ex + this.kd_outer * (ref.vel[0] - state[1]) + ki_outer * this._integX;
+        const drone_y_des = w.y + this.kp_outer * payload_ey + this.kd_outer * (ref.vel[1] - state[3]) + ki_outer * this._integY;
 
         // Inner loop: force from drone position error
         const drone_ex = drone_x_des - state[0];
@@ -512,17 +516,15 @@ class CascadePDController {
 
     setAggression(aggr) {
         const s = aggr * (0.5 + 0.5 * aggr);
-        this.kp_outer = 1.8 * s;
-        this.kd_outer = 1.2 * s;
-        this.kp_inner = 30 * s;
-        this.kd_inner = 20 * s;
+        this.kp_outer = 0.5 * s;
+        this.kd_outer = 1.0 * s;
+        this.kp_inner = 20 * s;
+        this.kd_inner = 13 * s;
         this.kp_z = 50 * s;
         this.kd_z = 30 * s;
     }
 
     reset() {
-        this.prevPayloadX = null;
-        this.prevPayloadY = null;
         this._integX = 0;
         this._integY = 0;
     }
@@ -782,10 +784,10 @@ class FlatnessController {
     constructor(params) {
         this.params = params;
         // Feedback gains
-        this.kp = 25;
-        this.kd = 15;
-        this.kp_phi = 40;
-        this.kd_phi = 15;
+        this.kp = 12;
+        this.kd = 8;
+        this.kp_phi = 10;
+        this.kd_phi = 4;
         this.kp_z = 50;
         this.kd_z = 30;
         // Integral of payload position error
@@ -804,26 +806,34 @@ class FlatnessController {
         this._integY = Math.max(-10, Math.min(10, this._integY));
         const ki = this.kp * 0.08;
 
-        // Flatness inversion using ref.acc directly, biased by integral
-        const x_d_des = ref.pos[0] + (L / g) * ref.acc[0] + ki * this._integX;
-        const y_d_des = ref.pos[1] + (L / g) * ref.acc[1] + ki * this._integY;
+        // Drone position target: goal + payload integral bias
+        // (The (L/g)*ref.acc position offset is omitted because with L=8m it creates
+        //  targets far beyond the goal, exceeding actuator limits and causing overshoot)
+        const x_d_des = ref.pos[0] + ki * this._integX;
+        const y_d_des = ref.pos[1] + ki * this._integY;
 
-        // Desired pendulum angle from flatness: phi = -acc / g
-        const phi_x_des = -ref.acc[0] / g;
-        const phi_y_des = -ref.acc[1] / g;
+        // Desired pendulum angle from flatness: phi = -acc / g (clamped)
+        const maxAcc = maxLateral / (m_d + m_w) * 0.4;
+        const acc_x = Math.max(-maxAcc, Math.min(maxAcc, ref.acc[0]));
+        const acc_y = Math.max(-maxAcc, Math.min(maxAcc, ref.acc[1]));
+        const phi_x_des = -acc_x / g;
+        const phi_y_des = -acc_y / g;
 
-        // Feedforward force: F = (m_d + m_w) * acc
+        // Feedforward force (still useful, clamped to actuator limits later)
         const Fx_ff = (m_d + m_w) * ref.acc[0];
         const Fy_ff = (m_d + m_w) * ref.acc[1];
 
         // Feedback: PD on drone position + PD on pendulum angle
+        // Angle sign: +kp_phi*(phi-phi_des) creates stable stiffness through coupling
+        // (non-collocated feedback requires the opposite sign from intuition)
+        // Use sin() for angle term to bound correction at large angles
         let F_x = Fx_ff
             + this.kp * (x_d_des - state[0]) - this.kd * state[1]
-            - this.kp_phi * (state[6] - phi_x_des) - this.kd_phi * state[7];
+            + this.kp_phi * Math.sin(state[6] - phi_x_des) + this.kd_phi * state[7];
 
         let F_y = Fy_ff
             + this.kp * (y_d_des - state[2]) - this.kd * state[3]
-            - this.kp_phi * (state[8] - phi_y_des) - this.kd_phi * state[9];
+            + this.kp_phi * Math.sin(state[8] - phi_y_des) + this.kd_phi * state[9];
 
         // Vertical (no pendulum coupling)
         const zDes = ref.pos[2] + L;
@@ -839,10 +849,10 @@ class FlatnessController {
 
     setAggression(aggr) {
         const s = aggr * (0.5 + 0.5 * aggr);
-        this.kp = 25 * s;
-        this.kd = 15 * s;
-        this.kp_phi = 40 * s;
-        this.kd_phi = 15 * s;
+        this.kp = 12 * s;
+        this.kd = 8 * s;
+        this.kp_phi = 10 * s;
+        this.kd_phi = 4 * s;
         this.kp_z = 50 * s;
         this.kd_z = 30 * s;
     }
@@ -944,43 +954,62 @@ class ZVDShaper {
 class FeedbackLinController {
     constructor(params) {
         this.params = params;
-        this.kp = 12;
-        this.ka = 30;
-        this.kb = 12;
+        this.kp = 2;
+        this.ka = 5;
+        this.kb = 1;
         // Integral of payload position error
         this._integX = 0;
         this._integY = 0;
     }
 
-    computeControl(state, ref, dt) {
-        const { m_d, m_w, L, g, maxLateral, maxThrust } = this.params;
+    _computeVirtualInput(posErr, velErr, phi, phiDot) {
         const kd = this.kp * 0.83;
         const ki = this.kp * 0.1;
+        // Use sin(phi) for angle term: bounded ±1 at large angles, ≈phi at small angles
+        // Clamp phi_dot to prevent rate-driven overcorrection
+        const phiDotClamped = Math.max(-2, Math.min(2, phiDot));
+        let vx = this.kp * posErr + kd * velErr
+            + this.ka * Math.sin(phi) + this.kb * phiDotClamped;
+        // Clamp virtual input to keep drone acceleration within reasonable bounds
+        // (prevents exciting pendulum past the recovery range for L=8m rope)
+        const vxMax = this.params.maxLateral / (this.params.m_d + this.params.m_w) * 0.8;
+        return Math.max(-vxMax, Math.min(vxMax, vx));
+    }
 
-        // X-axis feedback linearization with payload tracking
+    computeControl(state, ref, dt) {
+        const { m_d, m_w, L, g, maxLateral, maxThrust } = this.params;
+        const ki = this.kp * 0.1;
+
+        // X-axis feedback linearization
         const phi_x = state[6], phix_dot = state[7];
         const sin_px = Math.sin(phi_x), cos_px = Math.cos(phi_x);
-        // Payload position (for P/I), drone velocity (for D — avoids amplifying pendulum oscillation)
+        // Integral of payload position error (for wind compensation)
         const w_x = state[0] + L * Math.sin(phi_x);
-        // Integral of payload error
         this._integX += (ref.pos[0] - w_x) * dt;
         this._integX = Math.max(-10, Math.min(10, this._integX));
 
-        const vx = this.kp * (ref.pos[0] - w_x) + kd * (ref.vel[0] - state[1])
-            + ki * this._integX - this.ka * phi_x - this.kb * phix_dot;
+        // Virtual input: P/D on drone position (stable), integral biases for payload offset
+        // Angle signs: +ka*sin(phi) + kb*phi_dot creates stable stiffness and damping
+        // in the phi dynamics (through coupling: phi_dd ≈ -(g/L + ka/L)*phi - (kb/L)*phi_dot)
+        const vx = this._computeVirtualInput(
+            ref.pos[0] + ki * this._integX - state[0],
+            ref.vel[0] - state[1], phi_x, phix_dot
+        );
         let F_x = (m_d + m_w * sin_px * sin_px) * vx
             - m_w * L * sin_px * phix_dot * phix_dot
             - m_w * g * sin_px * cos_px;
 
-        // Y-axis feedback linearization with payload tracking
+        // Y-axis feedback linearization
         const phi_y = state[8], phiy_dot = state[9];
         const sin_py = Math.sin(phi_y), cos_py = Math.cos(phi_y);
         const w_y = state[2] + L * Math.sin(phi_y);
         this._integY += (ref.pos[1] - w_y) * dt;
         this._integY = Math.max(-10, Math.min(10, this._integY));
 
-        const vy = this.kp * (ref.pos[1] - w_y) + kd * (ref.vel[1] - state[3])
-            + ki * this._integY - this.ka * phi_y - this.kb * phiy_dot;
+        const vy = this._computeVirtualInput(
+            ref.pos[1] + ki * this._integY - state[2],
+            ref.vel[1] - state[3], phi_y, phiy_dot
+        );
         let F_y = (m_d + m_w * sin_py * sin_py) * vy
             - m_w * L * sin_py * phiy_dot * phiy_dot
             - m_w * g * sin_py * cos_py;
@@ -1012,6 +1041,9 @@ class SlidingModeController {
         this.alpha = 8;
         this.kSwitch = 15;
         this.epsilon = 0.5;
+        // Integral of payload position error for wind compensation
+        this._integX = 0;
+        this._integY = 0;
     }
 
     _computeAxis(posErr, velErr, phi, phiDot, params) {
@@ -1019,7 +1051,7 @@ class SlidingModeController {
         const beta = this.alpha * 0.375;
 
         // Sliding surface: s = lambda*posErr + velErr + alpha*phi + beta*phiDot
-        // posErr/velErr are now payload-based (passed from computeControl)
+        // posErr/velErr are drone-based (stable), integral bias handles payload offset
         const s = this.lambda * posErr + velErr + this.alpha * phi + beta * phiDot;
 
         // Coefficients from linearized dynamics for equivalent control
@@ -1048,17 +1080,25 @@ class SlidingModeController {
     computeControl(state, ref, dt) {
         const { L, m_d, m_w, g, maxLateral, maxThrust } = this.params;
 
-        // Use payload position/velocity for position error (full nonlinear)
+        // Integral of payload error for wind compensation
         const w_x = state[0] + L * Math.sin(state[6]);
-        const w_dot_x = state[1] + L * Math.cos(state[6]) * state[7];
         const w_y = state[2] + L * Math.sin(state[8]);
-        const w_dot_y = state[3] + L * Math.cos(state[8]) * state[9];
+        this._integX += (ref.pos[0] - w_x) * dt;
+        this._integY += (ref.pos[1] - w_y) * dt;
+        this._integX = Math.max(-10, Math.min(10, this._integX));
+        this._integY = Math.max(-10, Math.min(10, this._integY));
+        const ki = this.lambda * 0.1;
+
+        // Surface uses drone position/velocity (stable negative feedback)
+        // Integral of payload error biases the reference to compensate wind offset
+        const corrRefX = ref.pos[0] + ki * this._integX;
+        const corrRefY = ref.pos[1] + ki * this._integY;
 
         let F_x = this._computeAxis(
-            w_x - ref.pos[0], w_dot_x - ref.vel[0], state[6], state[7], this.params
+            state[0] - corrRefX, state[1] - ref.vel[0], state[6], state[7], this.params
         );
         let F_y = this._computeAxis(
-            w_y - ref.pos[1], w_dot_y - ref.vel[1], state[8], state[9], this.params
+            state[2] - corrRefY, state[3] - ref.vel[1], state[8], state[9], this.params
         );
 
         // Vertical (simple PD)
@@ -1072,7 +1112,10 @@ class SlidingModeController {
         return [F_x, F_y, F_z];
     }
 
-    reset() {}
+    reset() {
+        this._integX = 0;
+        this._integY = 0;
+    }
 }
 
 // ─── MPC Controller (finite-horizon LQR via discrete Riccati) ───────────────
@@ -1532,11 +1575,11 @@ export class Simulation {
                 break;
             case 'flatness':
                 this.flatness.kp = p.kp;
-                this.flatness.kd = p.kp * 0.6;
+                this.flatness.kd = p.kp * 0.67;
                 this.flatness.kp_phi = p.kp_phi;
-                this.flatness.kd_phi = p.kp_phi * 0.375;
-                this.flatness.kp_z = p.kp * 2;
-                this.flatness.kd_z = p.kp * 1.2;
+                this.flatness.kd_phi = p.kp_phi * 0.4;
+                this.flatness.kp_z = p.kp * 4;
+                this.flatness.kd_z = p.kp * 2.5;
                 break;
             case 'feedbacklin':
                 this.feedbacklin.kp = p.kp;
