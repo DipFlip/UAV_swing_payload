@@ -20,7 +20,7 @@ simLqr.setGoal(0, 0, 1);
 simPid.setGoal(0, 0, 1);
 
 // --- Algorithm name mapping for labels ---
-const ALGO_LABELS = { off: 'OFF', lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF', feedbacklin: 'FBL', sliding: 'SMC', mpc: 'MPC', trajmpc: 'TMPC' };
+const ALGO_LABELS = { off: 'OFF', lqr: 'LQR', pid: 'PID', cascade: 'CPD', flatness: 'FF', sliding: 'SMC', mpc: 'MPC', trajmpc: 'TMPC' };
 
 const SIM_DT = 0.02;  // fixed sim timestep
 let simAccum = 0;      // fractional sim-time accumulator
@@ -261,11 +261,6 @@ const ALGO_PARAMS = {
     flatness: [
         { key: 'kp', label: 'Pos Kp', min: 2, max: 30, step: 1, default: 12, optMin: 0.5, optMax: 50 },
         { key: 'kp_phi', label: 'Angle Kp', min: 1, max: 30, step: 1, default: 10, optMin: 0.5, optMax: 50 },
-    ],
-    feedbacklin: [
-        { key: 'kp', label: 'Pos Kp', min: 0.5, max: 8, step: 0.5, default: 2, optMin: 0.5, optMax: 10 },
-        { key: 'ka', label: 'Angle Ka', min: 0, max: 10, step: 0.5, default: 5, optMin: 0, optMax: 15 },
-        { key: 'kb', label: 'Rate Kb', min: 0.5, max: 8, step: 0.5, default: 1, optMin: 0.1, optMax: 10 },
     ],
     sliding: [
         { key: 'lambda', label: 'Conv \u03bb', min: 0.5, max: 8, step: 0.5, default: 2, optMin: 0.05, optMax: 50 },

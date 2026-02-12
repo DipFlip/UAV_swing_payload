@@ -47,6 +47,19 @@ The aggression parameter (5%–100%) controls how hard both controllers try to r
 - **LQR**: Scales Q and R matrices, re-solves the Riccati equation — maintains optimality at every level
 - **PID**: Linearly scales Kp, Ki, Kd gains — higher values mean faster response but more oscillation
 
+## Removed Algorithms
+
+### Feedback Linearization (FBL)
+
+Feedback linearization was removed in v4.16 after extensive testing showed it is fundamentally unsuitable for this system. The technique cancels the nonlinear sin/cos coupling between the drone and pendulum, replacing it with a virtual linear system. However, the drone-pendulum system has **non-collocated actuation** — the control force acts on the drone while the output of interest is the payload position, 8 meters below on a rope. This creates **non-minimum-phase dynamics**: when the drone accelerates, the payload initially swings backward before following.
+
+FBL's cancellation approach requires precise force matching at large angles, where actuator saturation makes exact cancellation impossible. Headless testing showed it performed worst of all algorithms:
+- 5m step response: 1.12m final error after 20s (did not settle), vs LQR's 0.009m
+- 15N wind: 4.4m steady-state error (worst), vs LQR's 0.9m
+- Square trajectory: 4.3m avg tracking error (worst), vs LQR's 1.0m
+
+Despite multiple iterations of fixes (correcting angle feedback signs, bounding virtual input, using sin(phi) saturation, adjusting integral gains), the fundamental non-collocated mismatch prevented acceptable performance.
+
 ## Interactive Controls
 
 | Control | Function |

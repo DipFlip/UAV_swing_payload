@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
     <link rel="icon" href="favicon.ico" type="image/x-icon">
-    <link rel="stylesheet" href="style.css?v=4.15">
+    <link rel="stylesheet" href="style.css?v=4.16">
 </head>
 <body>
     <div id="container">
@@ -20,7 +20,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v4.15</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v4.16</div>
             </div>
         </div>
 
@@ -103,7 +103,7 @@
                             <option value="pid">PID</option>
                             <option value="cascade">Cascade PD</option>
                             <option value="flatness">Flatness FF</option>
-                            <option value="feedbacklin">Feedback Lin</option>
+
                             <option value="sliding">Sliding Mode</option>
                             <option value="mpc">MPC</option>
                             <option value="trajmpc">Traj MPC</option>
@@ -124,7 +124,7 @@
                             <option value="pid" selected>PID</option>
                             <option value="cascade">Cascade PD</option>
                             <option value="flatness">Flatness FF</option>
-                            <option value="feedbacklin">Feedback Lin</option>
+
                             <option value="sliding">Sliding Mode</option>
                             <option value="mpc">MPC</option>
                             <option value="trajmpc">Traj MPC</option>
@@ -205,7 +205,6 @@
                 <p><a href="https://en.wikipedia.org/wiki/PID_controller" target="_blank"><strong>PID</strong></a> (Proportional-Integral-Derivative) &mdash; Classic 3-axis position controller that is completely blind to the pendulum dynamics &mdash; it only sees the drone&rsquo;s position error relative to the goal. Uses derivative-on-measurement (differentiates the drone position instead of the error signal) to avoid sudden force spikes when the goal changes. Tunable: <em>Kp</em> (proportional gain &mdash; immediate response to error), <em>Ki</em> (integral gain &mdash; eliminates steady-state offset over time), <em>Kd</em> (derivative gain &mdash; dampens oscillations by opposing velocity).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Cascade_control" target="_blank"><strong>Cascade PD</strong></a> (CPD) &mdash; Two nested <a href="https://en.wikipedia.org/wiki/PD_controller" target="_blank">PD control</a> loops inspired by overhead crane control. The outer loop measures the <em>payload</em> position error and computes a desired drone offset &mdash; if the payload is too far right, it commands the drone further right to &ldquo;pull&rdquo; it back. The inner loop then drives the drone to that desired position. Unlike plain PID, this explicitly tracks the payload rather than just the drone, which naturally reduces swing even without a pendulum model. Tunable: <em>Outer Kp/Kd</em> (payload tracking responsiveness) and <em>Inner Kp/Kd</em> (drone positioning aggressiveness).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Flatness_(systems_theory)" target="_blank"><strong>Flatness FF</strong></a> (Differential Flatness + Feedforward) &mdash; Exploits the mathematical property that the payload position is a <em>flat output</em> of the coupled drone-pendulum system. This means the exact drone trajectory and forces can be computed algebraically from any desired payload trajectory. Uses the global goal smoother&rsquo;s position, velocity, and acceleration reference to invert the linearized dynamics: desired drone position = payload position + (L/g) &times; payload acceleration, and desired pendulum angle &phi; = &minus;acceleration/g. Combines this feedforward with PD feedback on drone position and pendulum angle for robustness. Tunable: <em>Pos Kp</em> (position feedback strength), <em>Angle Kp</em> (pendulum angle correction strength).</p>
-                <p><a href="https://en.wikipedia.org/wiki/Feedback_linearization" target="_blank"><strong>Feedback Lin</strong></a> (FBL &mdash; Feedback Linearization) &mdash; Applies a state-dependent nonlinear transformation that cancels the sin/cos coupling between the drone and pendulum, making the system behave like a simple double integrator. Once linearized, a PD controller drives position and angle to zero. The force law is: <code>F = (m<sub>d</sub> + m<sub>w</sub>sin&sup2;&phi;) &middot; v &minus; m<sub>w</sub>L sin&phi; &middot; &phi;&#x307;&sup2; &minus; m<sub>w</sub>g sin&phi; cos&phi;</code>, where <code>v</code> is the PD virtual input. Works well for moderate angles but demands large forces near singularities. Tunable: <em>Pos Kp</em> (position tracking), <em>Angle Ka</em> (pendulum angle suppression), <em>Rate Kb</em> (angular rate damping).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Sliding_mode_control" target="_blank"><strong>Sliding Mode</strong></a> (SMC) &mdash; Defines a sliding surface combining position error, velocity, pendulum angle, and angular rate: <code>s = &lambda;(x &minus; x<sub>des</sub>) + x&#x307; + &alpha;&phi; + &beta;&phi;&#x307;</code>. Computes an equivalent control to keep the state on the surface, plus a switching term <code>&minus;k&middot;sat(s/&epsilon;)</code> that forces trajectories toward it. Extremely robust to model uncertainty (wrong mass, rope length). A boundary layer &epsilon; smooths the switching to reduce force chattering. Tunable: <em>Convergence &lambda;</em> (surface slope), <em>Angle wt &alpha;</em> (pendulum influence), <em>Switch gain k</em> (correction strength), <em>Boundary &epsilon;</em> (chattering vs. precision trade-off).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Model_predictive_control" target="_blank"><strong>MPC</strong></a> (Model Predictive Control) &mdash; Solves a finite-horizon optimal control problem by running a backward <a href="https://en.wikipedia.org/wiki/Riccati_equation" target="_blank">discrete Riccati recursion</a> over N timesteps. At each step it minimizes a quadratic cost on position error, swing, and control effort, yielding a gain matrix applied to the current state error. Unlike infinite-horizon LQR, MPC&rsquo;s gains depend on the horizon length: short horizons (N=5) produce sluggish, conservative control; long horizons (N=200) converge to LQR-like performance. Gains are cached and only recomputed when sliders change. Tunable: <em>Horizon N</em> (planning depth), <em>Pos weight</em> (tracking aggressiveness), <em>Ctrl cost</em> (force penalty).</p>
                 <p><a href="https://en.wikipedia.org/wiki/Model_predictive_control" target="_blank"><strong>Traj MPC</strong></a> (Trajectory-Preview MPC) &mdash; A true model-predictive controller that looks ahead along the known trajectory. Unlike the standard MPC which only sees the current reference point, Traj MPC samples the future trajectory over a configurable preview horizon (N timesteps) and computes time-varying feedforward terms that anticipate upcoming turns and accelerations. Internally uses a two-phase architecture: a cached backward Riccati recursion (recomputed only when parameters change) stores optimal gain matrices for each horizon step, then a lightweight affine backward pass runs every frame to compute the preview feedforward from the future reference sequence. Especially effective on the Square and Mower patterns where it pre-steers into corners rather than reacting to them. Without an active trajectory pattern, falls back to standard MPC behavior. Tunable: <em>Horizon N</em> (preview depth in timesteps &mdash; 100 = 2 seconds ahead at 50Hz), <em>Pos weight</em> (tracking aggressiveness), <em>Ctrl cost</em> (force penalty).</p>
@@ -224,6 +223,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=4.15"></script>
+    <script type="module" src="main.js?v=4.16"></script>
 </body>
 </html>

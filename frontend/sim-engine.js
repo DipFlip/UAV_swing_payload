@@ -948,89 +948,6 @@ class ZVDShaper {
     }
 }
 
-// ─── Feedback Linearization Controller ──────────────────────────────────────
-// Cancels nonlinear sin/cos coupling, then applies PD on the linearized system.
-
-class FeedbackLinController {
-    constructor(params) {
-        this.params = params;
-        this.kp = 2;
-        this.ka = 5;
-        this.kb = 1;
-        // Integral of payload position error
-        this._integX = 0;
-        this._integY = 0;
-    }
-
-    _computeVirtualInput(posErr, velErr, phi, phiDot) {
-        const kd = this.kp * 0.83;
-        const ki = this.kp * 0.1;
-        // Use sin(phi) for angle term: bounded ±1 at large angles, ≈phi at small angles
-        // Clamp phi_dot to prevent rate-driven overcorrection
-        const phiDotClamped = Math.max(-2, Math.min(2, phiDot));
-        let vx = this.kp * posErr + kd * velErr
-            + this.ka * Math.sin(phi) + this.kb * phiDotClamped;
-        // Clamp virtual input to keep drone acceleration within reasonable bounds
-        // (prevents exciting pendulum past the recovery range for L=8m rope)
-        const vxMax = this.params.maxLateral / (this.params.m_d + this.params.m_w) * 0.8;
-        return Math.max(-vxMax, Math.min(vxMax, vx));
-    }
-
-    computeControl(state, ref, dt) {
-        const { m_d, m_w, L, g, maxLateral, maxThrust } = this.params;
-        const ki = this.kp * 0.1;
-
-        // X-axis feedback linearization
-        const phi_x = state[6], phix_dot = state[7];
-        const sin_px = Math.sin(phi_x), cos_px = Math.cos(phi_x);
-        // Integral of payload position error (for wind compensation)
-        const w_x = state[0] + L * Math.sin(phi_x);
-        this._integX += (ref.pos[0] - w_x) * dt;
-        this._integX = Math.max(-10, Math.min(10, this._integX));
-
-        // Virtual input: P/D on drone position (stable), integral biases for payload offset
-        // Angle signs: +ka*sin(phi) + kb*phi_dot creates stable stiffness and damping
-        // in the phi dynamics (through coupling: phi_dd ≈ -(g/L + ka/L)*phi - (kb/L)*phi_dot)
-        const vx = this._computeVirtualInput(
-            ref.pos[0] + ki * this._integX - state[0],
-            ref.vel[0] - state[1], phi_x, phix_dot
-        );
-        let F_x = (m_d + m_w * sin_px * sin_px) * vx
-            - m_w * L * sin_px * phix_dot * phix_dot
-            - m_w * g * sin_px * cos_px;
-
-        // Y-axis feedback linearization
-        const phi_y = state[8], phiy_dot = state[9];
-        const sin_py = Math.sin(phi_y), cos_py = Math.cos(phi_y);
-        const w_y = state[2] + L * Math.sin(phi_y);
-        this._integY += (ref.pos[1] - w_y) * dt;
-        this._integY = Math.max(-10, Math.min(10, this._integY));
-
-        const vy = this._computeVirtualInput(
-            ref.pos[1] + ki * this._integY - state[2],
-            ref.vel[1] - state[3], phi_y, phiy_dot
-        );
-        let F_y = (m_d + m_w * sin_py * sin_py) * vy
-            - m_w * L * sin_py * phiy_dot * phiy_dot
-            - m_w * g * sin_py * cos_py;
-
-        // Vertical (simple PD)
-        const ez = (ref.pos[2] + L) - state[4];
-        let F_z = (m_d + m_w) * g + 50 * ez - 30 * state[5];
-
-        F_x = Math.max(-maxLateral, Math.min(maxLateral, F_x));
-        F_y = Math.max(-maxLateral, Math.min(maxLateral, F_y));
-        F_z = Math.max(0, Math.min(maxThrust, F_z));
-
-        return [F_x, F_y, F_z];
-    }
-
-    reset() {
-        this._integX = 0;
-        this._integY = 0;
-    }
-}
-
 // ─── Sliding Mode Controller ────────────────────────────────────────────────
 // Sliding surface + equivalent control + bounded switching term.
 
@@ -1622,9 +1539,6 @@ export class Simulation {
         // Flatness controller
         this.flatness = new FlatnessController(this.params);
 
-        // Feedback Linearization controller
-        this.feedbacklin = new FeedbackLinController(this.params);
-
         // Sliding Mode controller
         this.sliding = new SlidingModeController(this.params);
 
@@ -1729,9 +1643,6 @@ export class Simulation {
             case 'flatness':
                 control = this.flatness.computeControl(this.state, ref, this.dt);
                 break;
-            case 'feedbacklin':
-                control = this.feedbacklin.computeControl(this.state, ref, this.dt);
-                break;
             case 'sliding':
                 control = this.sliding.computeControl(this.state, ref, this.dt);
                 break;
@@ -1834,7 +1745,6 @@ export class Simulation {
         this.pid.reset();
         this.cascade.reset();
         this.flatness.reset();
-        this.feedbacklin.reset();
         this.sliding.reset();
         this.mpc.reset();
         this.trajmpc.reset();
@@ -1896,11 +1806,6 @@ export class Simulation {
                 this.flatness.kd_phi = p.kp_phi * 0.4;
                 this.flatness.kp_z = p.kp * 4;
                 this.flatness.kd_z = p.kp * 2.5;
-                break;
-            case 'feedbacklin':
-                this.feedbacklin.kp = p.kp;
-                this.feedbacklin.ka = p.ka;
-                this.feedbacklin.kb = p.kb;
                 break;
             case 'sliding':
                 this.sliding.lambda = p.lambda;
@@ -1974,7 +1879,6 @@ export class Simulation {
         this.pid.params = this.params;
         this.cascade.params = this.params;
         this.flatness.params = this.params;
-        this.feedbacklin.params = this.params;
         this.sliding.params = this.params;
         this.mpc.params = this.params;
         this.mpc.markDirty();
@@ -1995,7 +1899,6 @@ export class Simulation {
         this.pid.reset();
         this.cascade.reset();
         this.flatness.reset();
-        this.feedbacklin.reset();
         this.sliding.reset();
         this.mpc.reset();
         this.trajmpc.reset();
