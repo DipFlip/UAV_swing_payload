@@ -1121,7 +1121,6 @@ class MPCController {
     _recompute() {
         const { m_d, m_w, L, g } = this.params;
         const dt = this.dt;
-        const N = this.horizon;
 
         // --- Augmented lateral subsystem (5x5) ---
         const A_lat = matFromArray(4, 4, [
@@ -1160,25 +1159,37 @@ class MPCController {
             0,      qp*0.25*L,  0,        qp*0.25*L*L + qphi, 0,
             0,      0,          0,        0,                  qp*0.1,
         ]);
-        const R_lat = matFromArray(1, 1, [this.rCost]);
-        const Qf_lat = matScale(Q_lat, 2); // terminal cost
+        const R_val = this.rCost;
 
-        // Backward Riccati
-        let P = matCopy(Qf_lat);
+        // Converge Riccati to steady state (DARE solution)
         const Ad_latT = matTranspose(Ad_lat);
         const Bd_latT = matTranspose(Bd_lat);
-        let K0_lat = null;
+        const Bd_vec = new Float64Array(5);
+        for (let i = 0; i < 5; i++) Bd_vec[i] = matGet(Bd_lat, i, 0);
 
-        for (let i = N - 1; i >= 0; i--) {
+        let P = matCopy(Q_lat);
+        for (let iter = 0; iter < 2000; iter++) {
             const BtP = matMul(Bd_latT, P);
-            const BtPBpR = matAdd(R_lat, matMul(BtP, Bd_lat));
-            const BtPA = matMul(BtP, Ad_lat);
-            const K = matMul(matInverse(BtPBpR), BtPA);
-            if (i === 0) K0_lat = K;
-            P = matAdd(Q_lat, matSub(matMul(Ad_latT, matMul(P, Ad_lat)), matMul(matMul(Ad_latT, matMul(P, Bd_lat)), K)));
+            let BtPB = 0;
+            for (let i = 0; i < 5; i++) BtPB += matGet(BtP, 0, i) * Bd_vec[i];
+            const Sinv = 1 / (R_val + BtPB);
+            const PBd = matMul(P, Bd_lat);
+            const correction = matScale(matMul(PBd, matTranspose(PBd)), Sinv);
+            const P_new = matAdd(Q_lat, matMul(matMul(Ad_latT, matSub(P, correction)), Ad_lat));
+            // Check convergence
+            let maxDiff = 0;
+            for (let i = 0; i < 25; i++) maxDiff = Math.max(maxDiff, Math.abs(P_new.d[i] - P.d[i]));
+            P = P_new;
+            if (maxDiff < 1e-10) break;
         }
 
-        // --- Vertical subsystem (2x2) --- unchanged
+        // Extract converged gain K = (R + B'PB)^{-1} B'P Ad
+        const BtP = matMul(Bd_latT, P);
+        let BtPB = 0;
+        for (let i = 0; i < 5; i++) BtPB += matGet(BtP, 0, i) * Bd_vec[i];
+        this._K0_lat = matScale(matMul(BtP, Ad_lat), 1 / (R_val + BtPB));
+
+        // --- Vertical subsystem (2x2) ---
         const A_vert = matFromArray(2, 2, [0, 1, 0, 0]);
         const B_vert = matFromArray(2, 1, [0, 1 / (m_d + m_w)]);
         const I2 = matIdentity(2);
@@ -1186,24 +1197,27 @@ class MPCController {
         const Bd_vert = matScale(B_vert, dt);
         const Q_vert = matFromArray(2, 2, [this.qPos * 25, 0, 0, this.qPos * 8]);
         const R_vert = matFromArray(1, 1, [this.rCost]);
-        const Qf_vert = matScale(Q_vert, 2);
 
-        let Pv = matCopy(Qf_vert);
+        let Pv = matCopy(Q_vert);
         const Ad_vertT = matTranspose(Ad_vert);
         const Bd_vertT = matTranspose(Bd_vert);
-        let K0_vert = null;
 
-        for (let i = N - 1; i >= 0; i--) {
-            const BtP = matMul(Bd_vertT, Pv);
-            const BtPBpR = matAdd(R_vert, matMul(BtP, Bd_vert));
-            const BtPA = matMul(BtP, Ad_vert);
-            const K = matMul(matInverse(BtPBpR), BtPA);
-            if (i === 0) K0_vert = K;
-            Pv = matAdd(Q_vert, matSub(matMul(Ad_vertT, matMul(Pv, Ad_vert)), matMul(matMul(Ad_vertT, matMul(Pv, Bd_vert)), K)));
+        for (let iter = 0; iter < 2000; iter++) {
+            const BtPv = matMul(Bd_vertT, Pv);
+            const BtPBpR = matAdd(R_vert, matMul(BtPv, Bd_vert));
+            const Kv = matMul(matInverse(BtPBpR), matMul(BtPv, Ad_vert));
+            const Pv_new = matAdd(Q_vert, matSub(
+                matMul(Ad_vertT, matMul(Pv, Ad_vert)),
+                matMul(matMul(Ad_vertT, matMul(Pv, Bd_vert)), Kv)
+            ));
+            let maxDiff = 0;
+            for (let i = 0; i < 4; i++) maxDiff = Math.max(maxDiff, Math.abs(Pv_new.d[i] - Pv.d[i]));
+            Pv = Pv_new;
+            if (maxDiff < 1e-10) break;
         }
 
-        this._K0_lat = K0_lat;
-        this._K0_vert = K0_vert;
+        const BtPv = matMul(Bd_vertT, Pv);
+        this._K0_vert = matMul(matInverse(matAdd(R_vert, matMul(BtPv, Bd_vert))), matMul(BtPv, Ad_vert));
         this._dirty = false;
     }
 
@@ -1335,21 +1349,41 @@ class TrajectoryMPCController {
         ]);
         this._Q = Q;
         this._R_val = this.rCost;
-        const Qf = matScale(Q, 2);
 
-        // Backward Riccati pass — cache P, K, Sinv, AclT for all horizon steps
+        // Converge Riccati to steady state (DARE) for terminal cost.
+        // Without this, short preview horizons give grossly under-converged
+        // gains because the integral state needs ~500 steps to reach steady state.
+        const BdT = matTranspose(this._Bd);
+        let P_ss = matCopy(Q);
+        for (let iter = 0; iter < 2000; iter++) {
+            const BtP = matMul(BdT, P_ss);
+            let BtPB = 0;
+            for (let i = 0; i < 5; i++) BtPB += matGet(BtP, 0, i) * this._Bd_vec[i];
+            const Sinv = 1 / (this._R_val + BtPB);
+            const PBd = matMul(P_ss, this._Bd);
+            const correction = matScale(matMul(PBd, matTranspose(PBd)), Sinv);
+            const P_new = matAdd(Q, matMul(matMul(AdT, matSub(P_ss, correction)), this._Ad));
+            let maxDiff = 0;
+            for (let i = 0; i < 25; i++) maxDiff = Math.max(maxDiff, Math.abs(P_new.d[i] - P_ss.d[i]));
+            P_ss = P_new;
+            if (maxDiff < 1e-10) break;
+        }
+
+        // Backward Riccati pass — cache P, K, Sinv, AclT for preview horizon.
+        // Terminal cost P[N] = P_∞ (converged DARE) ensures correct gains
+        // even with short preview windows.
         this._P_cache = new Array(N + 1);
         this._K_cache = new Array(N);
         this._Sinv_cache = new Float64Array(N);
         this._AclT_cache = new Array(N);
 
-        this._P_cache[N] = Qf;
+        this._P_cache[N] = P_ss;
 
         for (let k = N - 1; k >= 0; k--) {
             const P = this._P_cache[k + 1];
 
             // BtP = Bd^T * P (1x5)
-            const BtP = matMul(matTranspose(this._Bd), P);
+            const BtP = matMul(BdT, P);
 
             // S = R + B^T P B (scalar)
             let BtPB = 0;
@@ -1376,7 +1410,7 @@ class TrajectoryMPCController {
             this._AclT_cache[k] = matTranspose(Acl);
         }
 
-        // --- Vertical subsystem (2x2, cached gain, same as regular MPC) ---
+        // --- Vertical subsystem (2x2, converge to DARE steady state) ---
         const A_vert = matFromArray(2, 2, [0, 1, 0, 0]);
         const B_vert = matFromArray(2, 1, [0, 1 / (m_d + m_w)]);
         const I2 = matIdentity(2);
@@ -1384,23 +1418,27 @@ class TrajectoryMPCController {
         const Bd_vert = matScale(B_vert, dt);
         const Q_vert = matFromArray(2, 2, [this.qPos * 25, 0, 0, this.qPos * 8]);
         const R_vert = matFromArray(1, 1, [this.rCost]);
-        const Qf_vert = matScale(Q_vert, 2);
 
-        let Pv = matCopy(Qf_vert);
+        let Pv = matCopy(Q_vert);
         const Ad_vertT = matTranspose(Ad_vert);
         const Bd_vertT = matTranspose(Bd_vert);
 
-        for (let i = N - 1; i >= 0; i--) {
+        for (let iter = 0; iter < 2000; iter++) {
             const BtP = matMul(Bd_vertT, Pv);
             const BtPBpR = matAdd(R_vert, matMul(BtP, Bd_vert));
-            const BtPA = matMul(BtP, Ad_vert);
-            const Kv = matMul(matInverse(BtPBpR), BtPA);
-            if (i === 0) this._K_vert = Kv;
-            Pv = matAdd(Q_vert, matSub(
+            const Kv = matMul(matInverse(BtPBpR), matMul(BtP, Ad_vert));
+            const Pv_new = matAdd(Q_vert, matSub(
                 matMul(Ad_vertT, matMul(Pv, Ad_vert)),
                 matMul(matMul(Ad_vertT, matMul(Pv, Bd_vert)), Kv)
             ));
+            let maxDiff = 0;
+            for (let i = 0; i < 4; i++) maxDiff = Math.max(maxDiff, Math.abs(Pv_new.d[i] - Pv.d[i]));
+            Pv = Pv_new;
+            if (maxDiff < 1e-10) break;
         }
+
+        const BtPv_final = matMul(Bd_vertT, Pv);
+        this._K_vert = matMul(matInverse(matAdd(R_vert, matMul(BtPv_final, Bd_vert))), matMul(BtPv_final, Ad_vert));
 
         this._dirty = false;
     }
