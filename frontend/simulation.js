@@ -134,7 +134,7 @@ function setDroneSystemVisible(system, label, visible) {
 }
 
 export function updateScene(sceneObjects, data, algoA, algoB) {
-    const { lqr, pid, goalMarker, lqrLabel, pidLabel, trails } = sceneObjects;
+    const { lqr, pid, goalMarker, refMarker, lqrLabel, pidLabel, trails } = sceneObjects;
     const lqrOn = algoA !== 'off';
     const pidOn = algoB !== 'off';
 
@@ -157,6 +157,12 @@ export function updateScene(sceneObjects, data, algoA, algoB) {
     const gp = physicsToThree(data.lqr.goal.x, data.lqr.goal.y, data.lqr.goal.z);
     goalMarker.position.set(gp.x, gp.y, gp.z);
     pushTrailPoint(trails.goal, gp.x, gp.y, gp.z);
+
+    // Reference marker (animated smoother position)
+    if (data.lqr.ref) {
+        const rp = physicsToThree(data.lqr.ref.x, data.lqr.ref.y, data.lqr.ref.z);
+        refMarker.position.set(rp.x, rp.y, rp.z);
+    }
 }
 
 // Labels for HUD (updated when algorithm changes)

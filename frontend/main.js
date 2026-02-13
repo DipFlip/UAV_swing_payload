@@ -135,15 +135,12 @@ sliderX.addEventListener('input', () => { xVal.textContent = sliderX.value; send
 sliderY.addEventListener('input', () => { yVal.textContent = sliderY.value; sendGoal(); });
 sliderZ.addEventListener('input', () => { zVal.textContent = sliderZ.value; sendGoal(); });
 
-// --- Goal smoothing slider ---
+// --- Trajectory corners slider ---
 const sliderSmooth = document.getElementById('slider-smooth');
 const smoothVal = document.getElementById('smooth-val');
 sliderSmooth.addEventListener('input', () => {
     const val = parseFloat(sliderSmooth.value);
     smoothVal.textContent = val.toFixed(1);
-    // Map to smoother omega: 0=bypass (no smoothing), >0=omega value
-    simLqr.setSmootherOmega(val);
-    simPid.setSmootherOmega(val);
     // Rebuild trajectory with new tension if pattern is active
     if (patternActive) {
         rebuildActiveTrajectory(true);
@@ -210,6 +207,25 @@ sliderWindStr.addEventListener('input', () => { windStrVal.textContent = sliderW
 sliderWindStd.addEventListener('input', () => { windStdVal.textContent = sliderWindStd.value; sendWind(); });
 sliderWindDir.addEventListener('input', () => { windDirVal.textContent = sliderWindDir.value; sendWind(); });
 sliderWindWander.addEventListener('input', () => { windWanderVal.textContent = sliderWindWander.value; sendWind(); });
+
+// --- Ref speed / accel sliders ---
+const sliderRefVmax = document.getElementById('slider-ref-vmax');
+const refVmaxVal = document.getElementById('ref-vmax-val');
+const sliderRefAmax = document.getElementById('slider-ref-amax');
+const refAmaxVal = document.getElementById('ref-amax-val');
+
+sliderRefVmax.addEventListener('input', () => {
+    const v = parseFloat(sliderRefVmax.value);
+    refVmaxVal.textContent = v.toFixed(1);
+    simLqr.setRefVmax(v);
+    simPid.setRefVmax(v);
+});
+sliderRefAmax.addEventListener('input', () => {
+    const a = parseFloat(sliderRefAmax.value);
+    refAmaxVal.textContent = a.toFixed(1);
+    simLqr.setRefAmax(a);
+    simPid.setRefAmax(a);
+});
 
 // --- Status ---
 const statusEl = document.getElementById('hud-status');

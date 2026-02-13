@@ -20,7 +20,7 @@
                 <div id="hud-angles">Angles: φx=0.00° φy=0.00°</div>
                 <div id="hud-control">Control: Fx=0 Fy=0 Fz=0</div>
                 <div id="hud-status">Status: Connecting...</div>
-                <div id="hud-version" style="color:#666;font-size:11px">v4.25</div>
+                <div id="hud-version" style="color:#666;font-size:11px">v4.26</div>
             </div>
         </div>
 
@@ -49,7 +49,7 @@
                     <input type="range" id="slider-speed" min="0.2" max="3.0" step="0.2" value="1.0">
                 </div>
                 <div class="slider-group">
-                    <label>Goal smooth: <span id="smooth-val">3.0</span></label>
+                    <label>Traj corners: <span id="smooth-val">3.0</span></label>
                     <input type="range" id="slider-smooth" min="0" max="8" step="0.5" value="3.0">
                 </div>
             </div>
@@ -90,6 +90,14 @@
                 <div class="slider-group">
                     <label>Wind wander: <span id="wind-wander-val">0</span>&deg;/s</label>
                     <input type="range" id="slider-wind-wander" min="0" max="90" step="5" value="0">
+                </div>
+                <div class="slider-group">
+                    <label>Ref speed: <span id="ref-vmax-val">3.0</span> m/s</label>
+                    <input type="range" id="slider-ref-vmax" min="0.5" max="10" step="0.5" value="3.0">
+                </div>
+                <div class="slider-group">
+                    <label>Ref accel: <span id="ref-amax-val">1.5</span> m/s&sup2;</label>
+                    <input type="range" id="slider-ref-amax" min="0.5" max="5" step="0.5" value="1.5">
                 </div>
             </div>
             <h3 class="collapsible" id="algo-header">Algorithm <span class="section-arrow">&#x25BC;</span></h3>

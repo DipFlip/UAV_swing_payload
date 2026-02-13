@@ -215,6 +215,8 @@ const DEFAULT_PARAMS = {
     windWander: 0,      // wind direction wander rate (rad/sqrt(s))
     windX: 0,           // instantaneous wind x-component (computed)
     windY: 0,           // instantaneous wind y-component (computed)
+    refVmax: 3.0,       // goal smoother max velocity (m/s)
+    refAmax: 1.5,       // goal smoother max acceleration (m/s²)
 };
 
 function solve2x2(a11, a12, a21, a22, b1, b2) {
@@ -562,37 +564,64 @@ class RefTrajectory {
     }
 }
 
-// ─── Goal Smoother (3-axis 3rd-order S-curve filter) ─────────────────────────
+// ─── Goal Smoother (adaptive 3rd-order S-curve) ─────────────────────────────
 // Converts raw [x,y,z] goal into {pos, vel, acc} reference with smooth transitions.
-// 3rd-order (triple pole at -σ) starts with zero acceleration, ramps smoothly,
-// and allows higher σ than 2nd-order without exciting the pendulum.
-// Transfer function: σ³ / (s + σ)³
+// Uses a 3rd-order filter (triple pole at -σ) with adaptive σ: sigma scales
+// inversely with sqrt(distance) to bound peak acceleration, and inversely with
+// distance to bound peak velocity. Short moves get high σ (fast response),
+// long moves get low σ (bounded forces). No oscillation near the goal because
+// the filter is always critically damped.
 
 class GoalSmoother3D {
-    constructor(pos0, omega) {
+    constructor(pos0, vmax, amax) {
         this._pos = [...pos0];
         this._vel = [0, 0, 0];
         this._acc = [0, 0, 0];
-        this._omega = omega;
+        this._vmax = vmax || 3.0;
+        this._amax = amax || 2.0;
+        // sigma_max: for moves ≤ 1m, sigma is capped so peak acceleration ≤ amax
+        this._sigmaMax = Math.sqrt(this._amax / 0.23);
     }
 
     update(goal, dt) {
-        // Bypass mode: no smoothing, pass goal directly
-        if (this._omega <= 0) {
+        const vmax = this._vmax;
+        const amax = this._amax;
+
+        // Bypass mode
+        if (vmax <= 0 || amax <= 0) {
             this._pos = [...goal];
             this._vel = [0, 0, 0];
             this._acc = [0, 0, 0];
             return { pos: [...goal], vel: [0, 0, 0], acc: [0, 0, 0] };
         }
-        const s = this._omega;
-        const s2 = s * s;
-        const s3 = s2 * s;
+
+        // 3D displacement and distance
+        const dx = [goal[0] - this._pos[0], goal[1] - this._pos[1], goal[2] - this._pos[2]];
+        const dist = Math.sqrt(dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]);
+
+        // Adaptive sigma: constrain peak acceleration and velocity.
+        // For 3rd-order filter with step Δ:
+        //   peak_acc ≈ 0.23 * σ² * Δ  → σ ≤ sqrt(amax / (0.23 * Δ))
+        //   peak_vel ≈ 0.27 * σ * Δ  → σ ≤ vmax / (0.27 * Δ)
+        let sigma;
+        if (dist < 0.001) {
+            sigma = this._sigmaMax;
+        } else {
+            const sigma_a = Math.sqrt(amax / (0.23 * dist));
+            const sigma_v = vmax / (0.27 * dist);
+            sigma = Math.min(this._sigmaMax, sigma_a, sigma_v);
+            sigma = Math.max(sigma, 0.1);
+        }
+
+        // 3rd-order S-curve filter: triple pole at -σ
+        const s = sigma, s2 = s * s, s3 = s2 * s;
         for (let i = 0; i < 3; i++) {
             const jerk = s3 * (goal[i] - this._pos[i]) - 3 * s2 * this._vel[i] - 3 * s * this._acc[i];
             this._acc[i] += jerk * dt;
             this._vel[i] += this._acc[i] * dt;
             this._pos[i] += this._vel[i] * dt;
         }
+
         return { pos: [...this._pos], vel: [...this._vel], acc: [...this._acc] };
     }
 
@@ -602,9 +631,8 @@ class GoalSmoother3D {
         this._acc = [0, 0, 0];
     }
 
-    setOmega(omega) {
-        this._omega = omega;
-    }
+    setVmax(v) { this._vmax = v; }
+    setAmax(a) { this._amax = a; this._sigmaMax = Math.sqrt(a / 0.23); }
 }
 
 // ─── Waypoint Trajectory (Catmull-Rom cubic Hermite spline) ──────────────────
@@ -1662,8 +1690,7 @@ export class Simulation {
         this.zvdShaper = new ZVDShaper(this.params, this.dt);
 
         // Goal smoother and trajectory state
-        this._refSmoother = new GoalSmoother3D([0, 0, 0], 1.0);
-        this._updateSmootherOmega();
+        this._refSmoother = new GoalSmoother3D([0, 0, 0], this.params.refVmax, this.params.refAmax);
         this._trajectory = null;
         this._trajStartTime = 0;
         this._useTrajectory = false;
@@ -1803,6 +1830,11 @@ export class Simulation {
                 y: Math.round(this.goal[1] * 10000) / 10000,
                 z: Math.round(this.goal[2] * 10000) / 10000,
             },
+            ref: {
+                x: Math.round(ref.pos[0] * 10000) / 10000,
+                y: Math.round(ref.pos[1] * 10000) / 10000,
+                z: Math.round(ref.pos[2] * 10000) / 10000,
+            },
             control: {
                 Fx: Math.round(this.lastControl[0] * 100) / 100,
                 Fy: Math.round(this.lastControl[1] * 100) / 100,
@@ -1843,31 +1875,8 @@ export class Simulation {
         this._useTrajectory = false;
     }
 
-    setSmootherOmega(omega) {
-        this._refSmoother.setOmega(omega);
-    }
-
-    // Compute goal smoother sigma based on controller type and pendulum physics.
-    // Uses 3rd-order S-curve filter (triple pole at -σ) which starts with zero
-    // acceleration, avoiding the sudden jerk that excites the pendulum. This
-    // allows higher σ values than the old 2nd-order filter for faster response.
-    _updateSmootherOmega() {
-        const { m_d, m_w, L, g } = this.params;
-        const omega_n = Math.sqrt(g * (m_d + m_w) / (m_d * L));
-        let sigma;
-        switch (this.controllerType) {
-            case 'cascade':
-                sigma = 3.0;
-                break;
-            case 'flatness':
-                sigma = 1.0 * omega_n;
-                break;
-            default:
-                sigma = 0.7 * omega_n;
-                break;
-        }
-        this._refSmoother.setOmega(sigma);
-    }
+    setRefVmax(v) { this._refSmoother.setVmax(v); this.params.refVmax = v; }
+    setRefAmax(a) { this._refSmoother.setAmax(a); this.params.refAmax = a; }
 
     setControllerType(type) {
         this.controllerType = type;
@@ -1880,7 +1889,6 @@ export class Simulation {
         this.sliding.reset();
         this.mpc.reset();
         this.trajmpc.reset();
-        this._updateSmootherOmega();
     }
 
     setSwingDamping(enabled) {
@@ -2017,7 +2025,6 @@ export class Simulation {
         const { K_lat, K_vert } = computeLqrGains(this.params);
         this.K_lat = K_lat;
         this.K_vert = K_vert;
-        this._updateSmootherOmega();
     }
 
     reset() {

@@ -217,7 +217,7 @@ export function createScene(canvas) {
         windMesh.instanceMatrix.needsUpdate = true;
     }
 
-    // --- Goal marker ---
+    // --- Goal marker (final destination) ---
     const goalGeo = new THREE.SphereGeometry(0.4, 16, 16);
     const goalMat = new THREE.MeshStandardMaterial({
         color: 0x00ff88,
@@ -228,6 +228,17 @@ export function createScene(canvas) {
     const goalMarker = new THREE.Mesh(goalGeo, goalMat);
     goalMarker.position.set(0, 0, 0);
     scene.add(goalMarker);
+
+    // --- Reference marker (animated smoother position) ---
+    const refGeo = new THREE.SphereGeometry(0.25, 12, 12);
+    const refMat = new THREE.MeshStandardMaterial({
+        color: 0xffcc00,
+        transparent: true,
+        opacity: 0.8,
+    });
+    const refMarker = new THREE.Mesh(refGeo, refMat);
+    refMarker.position.set(0, 0, 0);
+    scene.add(refMarker);
 
     // --- Trails (instanced cylinder segments for visible thickness) ---
     const TRAIL_MAX = 200;
@@ -368,7 +379,7 @@ export function createScene(canvas) {
     return {
         scene, camera, renderer, controls,
         lqr, pid,
-        goalMarker,
+        goalMarker, refMarker,
         lqrLabel, pidLabel,
         updateLabelText,
         trails,
