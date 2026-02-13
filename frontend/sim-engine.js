@@ -562,13 +562,17 @@ class RefTrajectory {
     }
 }
 
-// ─── Goal Smoother (3-axis 2nd-order critically-damped filter) ───────────────
+// ─── Goal Smoother (3-axis 3rd-order S-curve filter) ─────────────────────────
 // Converts raw [x,y,z] goal into {pos, vel, acc} reference with smooth transitions.
+// 3rd-order (triple pole at -σ) starts with zero acceleration, ramps smoothly,
+// and allows higher σ than 2nd-order without exciting the pendulum.
+// Transfer function: σ³ / (s + σ)³
 
 class GoalSmoother3D {
     constructor(pos0, omega) {
         this._pos = [...pos0];
         this._vel = [0, 0, 0];
+        this._acc = [0, 0, 0];
         this._omega = omega;
     }
 
@@ -577,21 +581,25 @@ class GoalSmoother3D {
         if (this._omega <= 0) {
             this._pos = [...goal];
             this._vel = [0, 0, 0];
+            this._acc = [0, 0, 0];
             return { pos: [...goal], vel: [0, 0, 0], acc: [0, 0, 0] };
         }
-        const omega = this._omega;
-        const acc = [0, 0, 0];
+        const s = this._omega;
+        const s2 = s * s;
+        const s3 = s2 * s;
         for (let i = 0; i < 3; i++) {
-            acc[i] = omega * omega * (goal[i] - this._pos[i]) - 2.0 * omega * this._vel[i];
-            this._vel[i] += acc[i] * dt;
+            const jerk = s3 * (goal[i] - this._pos[i]) - 3 * s2 * this._vel[i] - 3 * s * this._acc[i];
+            this._acc[i] += jerk * dt;
+            this._vel[i] += this._acc[i] * dt;
             this._pos[i] += this._vel[i] * dt;
         }
-        return { pos: [...this._pos], vel: [...this._vel], acc: [...acc] };
+        return { pos: [...this._pos], vel: [...this._vel], acc: [...this._acc] };
     }
 
     reset(pos) {
         this._pos = [...pos];
         this._vel = [0, 0, 0];
+        this._acc = [0, 0, 0];
     }
 
     setOmega(omega) {
@@ -1839,27 +1847,26 @@ export class Simulation {
         this._refSmoother.setOmega(omega);
     }
 
-    // Compute goal smoother omega based on controller type and pendulum physics.
-    // Controllers without anticipation (LQR, MPC, PID, sliding, flatness) need
-    // a slow reference to avoid outrunning the pendulum and causing overshoot.
-    // Controllers with payload tracking (cascade) or preview (trajmpc) can
-    // handle faster references.
+    // Compute goal smoother sigma based on controller type and pendulum physics.
+    // Uses 3rd-order S-curve filter (triple pole at -σ) which starts with zero
+    // acceleration, avoiding the sudden jerk that excites the pendulum. This
+    // allows higher σ values than the old 2nd-order filter for faster response.
     _updateSmootherOmega() {
         const { m_d, m_w, L, g } = this.params;
         const omega_n = Math.sqrt(g * (m_d + m_w) / (m_d * L));
-        let omega;
+        let sigma;
         switch (this.controllerType) {
             case 'cascade':
-                omega = 3.0;
+                sigma = 3.0;
                 break;
             case 'flatness':
-                omega = 0.7 * omega_n;
+                sigma = 1.0 * omega_n;
                 break;
             default:
-                omega = 0.42 * omega_n;
+                sigma = 0.7 * omega_n;
                 break;
         }
-        this._refSmoother.setOmega(omega);
+        this._refSmoother.setOmega(sigma);
     }
 
     setControllerType(type) {
