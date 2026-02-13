@@ -1654,7 +1654,8 @@ export class Simulation {
         this.zvdShaper = new ZVDShaper(this.params, this.dt);
 
         // Goal smoother and trajectory state
-        this._refSmoother = new GoalSmoother3D([0, 0, 0], 3.0);
+        this._refSmoother = new GoalSmoother3D([0, 0, 0], 1.0);
+        this._updateSmootherOmega();
         this._trajectory = null;
         this._trajStartTime = 0;
         this._useTrajectory = false;
@@ -1838,6 +1839,29 @@ export class Simulation {
         this._refSmoother.setOmega(omega);
     }
 
+    // Compute goal smoother omega based on controller type and pendulum physics.
+    // Controllers without anticipation (LQR, MPC, PID, sliding, flatness) need
+    // a slow reference to avoid outrunning the pendulum and causing overshoot.
+    // Controllers with payload tracking (cascade) or preview (trajmpc) can
+    // handle faster references.
+    _updateSmootherOmega() {
+        const { m_d, m_w, L, g } = this.params;
+        const omega_n = Math.sqrt(g * (m_d + m_w) / (m_d * L));
+        let omega;
+        switch (this.controllerType) {
+            case 'cascade':
+                omega = 3.0;
+                break;
+            case 'flatness':
+                omega = 0.7 * omega_n;
+                break;
+            default:
+                omega = 0.42 * omega_n;
+                break;
+        }
+        this._refSmoother.setOmega(omega);
+    }
+
     setControllerType(type) {
         this.controllerType = type;
         // Reset all controller integral states on switch
@@ -1849,6 +1873,7 @@ export class Simulation {
         this.sliding.reset();
         this.mpc.reset();
         this.trajmpc.reset();
+        this._updateSmootherOmega();
     }
 
     setSwingDamping(enabled) {
@@ -1985,6 +2010,7 @@ export class Simulation {
         const { K_lat, K_vert } = computeLqrGains(this.params);
         this.K_lat = K_lat;
         this.K_vert = K_vert;
+        this._updateSmootherOmega();
     }
 
     reset() {
