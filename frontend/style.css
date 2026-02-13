@@ -697,3 +697,24 @@ h3.collapsible:hover {
     margin-right: 3px;
     cursor: pointer;
 }
+
+/* Responsive layout for small screens */
+@media (max-width: 768px) {
+    #algo-info-panel {
+        bottom: auto;
+        top: 10px;
+        right: 10px;
+        left: auto;
+        width: calc(50% - 20px);
+        max-width: 360px;
+    }
+
+    #hud {
+        max-width: calc(50% - 20px);
+    }
+
+    #controls {
+        min-width: 300px;
+        max-width: 95vw;
+    }
+}

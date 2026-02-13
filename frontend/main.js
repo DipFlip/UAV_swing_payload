@@ -256,6 +256,12 @@ infoPanelHeader.addEventListener('click', () => {
     infoPanelToggle.innerHTML = collapsed ? '&#x25B2;' : '&#x25BC;';
 });
 
+// Collapse info panel on small screens
+if (window.innerWidth < 768) {
+    infoPanel.classList.add('collapsed');
+    infoPanelToggle.innerHTML = '&#x25B2;';
+}
+
 // --- Algorithm-specific parameter definitions ---
 const ALGO_PARAMS = {
     lqr: [
