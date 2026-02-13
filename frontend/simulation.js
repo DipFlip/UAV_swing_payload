@@ -165,38 +165,11 @@ export function updateScene(sceneObjects, data, algoA, algoB) {
     }
 }
 
-// Labels for HUD (updated when algorithm changes)
-let hudLabelA = 'LQR';
-let hudLabelB = 'PID';
-
 export function setHUDLabels(a, b) {
-    hudLabelA = a;
-    hudLabelB = b;
+    // Labels only used for chart legends now — no-op kept for API compatibility
 }
 
 export function updateHUD(data) {
-    const lqr = data.lqr;
-    const pid = data.pid;
-
-    document.getElementById('hud-time').textContent =
-        `Time: ${lqr.time.toFixed(2)} s`;
-
-    const lw = lqr.weight, pw = pid.weight;
-    const g = lqr.goal;
-
-    const lqrDist = Math.sqrt(
-        (lw.x - g.x) ** 2 + (lw.y - g.y) ** 2 + (lw.z - g.z) ** 2
-    ).toFixed(2);
-    const pidDist = Math.sqrt(
-        (pw.x - g.x) ** 2 + (pw.y - g.y) ** 2 + (pw.z - g.z) ** 2
-    ).toFixed(2);
-
-    document.getElementById('hud-drone').textContent =
-        `${hudLabelA} dist: ${lqrDist}m | ${hudLabelB} dist: ${pidDist}m`;
-    document.getElementById('hud-weight').textContent =
-        `${hudLabelA} wt: (${lw.x.toFixed(1)}, ${lw.y.toFixed(1)}, ${lw.z.toFixed(1)}) ${hudLabelB} wt: (${pw.x.toFixed(1)}, ${pw.y.toFixed(1)}, ${pw.z.toFixed(1)})`;
-    document.getElementById('hud-angles').textContent =
-        `${hudLabelA} \u03C6: ${(lqr.phi_x * 180 / Math.PI).toFixed(1)}\u00B0,${(lqr.phi_y * 180 / Math.PI).toFixed(1)}\u00B0 | ${hudLabelB} \u03C6: ${(pid.phi_x * 180 / Math.PI).toFixed(1)}\u00B0,${(pid.phi_y * 180 / Math.PI).toFixed(1)}\u00B0`;
-    document.getElementById('hud-control').textContent =
-        `Goal: (${g.x.toFixed(1)}, ${g.y.toFixed(1)}, ${g.z.toFixed(1)})`;
+    document.getElementById('chart-time').textContent =
+        `${data.lqr.time.toFixed(2)} s`;
 }

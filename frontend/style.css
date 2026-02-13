@@ -23,56 +23,6 @@ body {
     display: block;
 }
 
-#hud {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    border-radius: 8px;
-    font-size: 13px;
-    line-height: 1.6;
-    min-width: 240px;
-    backdrop-filter: blur(4px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-#hud.collapsed {
-    min-width: auto;
-}
-
-#hud-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 16px;
-    cursor: pointer;
-    user-select: none;
-}
-
-#hud-header h3 {
-    margin: 0;
-    color: #00d4ff;
-    font-size: 14px;
-}
-
-#hud-toggle {
-    background: none;
-    border: none;
-    color: #00d4ff;
-    font-size: 14px;
-    cursor: pointer;
-    padding: 0 4px;
-    line-height: 1;
-}
-
-#hud-content {
-    padding: 0 16px 12px;
-}
-
-#hud.collapsed #hud-content {
-    display: none;
-}
-
 #chart-panel {
     position: absolute;
     top: 10px;
@@ -108,6 +58,14 @@ body {
     color: #00d4ff;
     font-size: 13px;
     font-weight: 600;
+}
+
+#chart-time {
+    color: #aaa;
+    font-size: 12px;
+    margin-left: auto;
+    margin-right: 8px;
+    font-family: 'Courier New', monospace;
 }
 
 #chart-toggle {
@@ -549,10 +507,10 @@ h3.collapsible:hover {
     background: rgba(0, 212, 255, 0.15);
 }
 
-/* Algorithm info panel (bottom-left) */
+/* Algorithm info panel (top-left) */
 #algo-info-panel {
     position: absolute;
-    bottom: 10px;
+    top: 10px;
     left: 10px;
     width: 360px;
     background: rgba(0, 0, 0, 0.7);
@@ -701,19 +659,12 @@ h3.collapsible:hover {
 /* Responsive layout for small screens */
 @media (max-width: 768px) {
     #algo-info-panel {
-        bottom: auto;
-        top: 10px;
-        right: 10px;
-        left: auto;
         width: calc(50% - 20px);
         max-width: 360px;
     }
 
-    #hud {
-        max-width: calc(50% - 20px);
-    }
-
     #controls {
+        bottom: 20px;
         min-width: 300px;
         max-width: 95vw;
     }

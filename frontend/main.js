@@ -37,22 +37,10 @@ function toggleCharts() {
 }
 chartHeader.addEventListener('click', toggleCharts);
 
-// --- HUD toggle ---
-const hudEl = document.getElementById('hud');
-const hudToggle = document.getElementById('hud-toggle');
-const hudHeader = document.getElementById('hud-header');
-
-hudHeader.addEventListener('click', () => {
-    const collapsed = hudEl.classList.toggle('collapsed');
-    hudToggle.innerHTML = collapsed ? '&#x25B2;' : '&#x25BC;';
-});
-
-// Start collapsed on small screens
+// Start charts collapsed on small screens
 if (window.innerWidth < 768) {
     chartPanelEl.classList.add('collapsed');
     chartToggle.innerHTML = '&#x25B2;';
-    hudEl.classList.add('collapsed');
-    hudToggle.innerHTML = '&#x25B2;';
 }
 
 // --- Time scale slider ---
@@ -227,11 +215,6 @@ sliderRefAmax.addEventListener('input', () => {
     simPid.setRefAmax(a);
 });
 
-// --- Status ---
-const statusEl = document.getElementById('hud-status');
-statusEl.textContent = 'Status: Running locally';
-statusEl.style.color = '#00ff88';
-
 // --- Collapsible section toggles ---
 function setupCollapsible(headerId, contentId) {
     const header = document.getElementById(headerId);
@@ -255,12 +238,6 @@ infoPanelHeader.addEventListener('click', () => {
     const collapsed = infoPanel.classList.toggle('collapsed');
     infoPanelToggle.innerHTML = collapsed ? '&#x25B2;' : '&#x25BC;';
 });
-
-// Collapse info panel on small screens
-if (window.innerWidth < 768) {
-    infoPanel.classList.add('collapsed');
-    infoPanelToggle.innerHTML = '&#x25B2;';
-}
 
 // --- Algorithm-specific parameter definitions ---
 const ALGO_PARAMS = {
