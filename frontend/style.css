@@ -659,12 +659,17 @@ h3.collapsible:hover {
 /* Responsive layout for small screens */
 @media (max-width: 768px) {
     #algo-info-panel {
+        top: 6px;
         width: calc(50% - 20px);
         max-width: 360px;
     }
 
+    #chart-panel {
+        top: 6px;
+    }
+
     #controls {
-        bottom: 20px;
+        bottom: 15px;
         min-width: 300px;
         max-width: 95vw;
     }
