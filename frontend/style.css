@@ -63,9 +63,9 @@ body {
 #chart-time {
     color: #aaa;
     font-size: 12px;
-    margin-left: auto;
-    margin-right: 8px;
+    text-align: center;
     font-family: 'Courier New', monospace;
+    padding: 2px 0;
 }
 
 #chart-toggle {
@@ -660,8 +660,8 @@ h3.collapsible:hover {
 @media (max-width: 768px) {
     #algo-info-panel {
         top: 6px;
-        width: calc(50% - 20px);
-        max-width: 360px;
+        width: calc(100% - 20px);
+        max-width: none;
     }
 
     #chart-panel {
@@ -669,7 +669,7 @@ h3.collapsible:hover {
     }
 
     #controls {
-        bottom: 15px;
+        bottom: 18px;
         min-width: 300px;
         max-width: 95vw;
     }
