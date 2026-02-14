@@ -660,8 +660,11 @@ h3.collapsible:hover {
 @media (max-width: 768px) {
     #algo-info-panel {
         top: 6px;
+        width: auto;
+    }
+
+    #algo-info-panel:not(.collapsed) {
         width: calc(100% - 20px);
-        max-width: none;
     }
 
     #chart-panel {
