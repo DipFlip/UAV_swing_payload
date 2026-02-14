@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drone + Hanging Weight Simulation</title>
     <link rel="icon" href="favicon.ico" type="image/x-icon">
-    <link rel="stylesheet" href="style.css?v=4.31">
+    <link rel="stylesheet" href="style.css?v=4.32">
 </head>
 <body>
     <div id="container">
@@ -196,7 +196,7 @@
         <div id="algo-info-panel" class="visible">
             <div id="info-panel-header"><button id="info-panel-toggle">&#x25BC;</button><span>Info</span></div>
             <div id="info-panel-content">
-                <div id="info-version" style="color:#666;font-size:11px;margin-bottom:8px">v4.31 · <a href="https://github.com/DipFlip/UAV_swing_payload" target="_blank" style="color:#888;text-decoration:none">GitHub</a></div>
+                <div id="info-version" style="color:#666;font-size:11px;margin-bottom:8px">v4.32 · <a href="https://github.com/DipFlip/UAV_swing_payload" target="_blank" style="color:#888;text-decoration:none">GitHub</a></div>
                 <h4 style="margin:0 0 6px;color:#0af">Simulation</h4>
                 <p><strong>Physics model</strong> &mdash; A quadrotor drone carrying a payload on a rigid rope, modeled as a 3D coupled pendulum. The simulation tracks 10 state variables: drone position (x, y, z), drone velocity (x&#x307;, y&#x307;, z&#x307;), and two pendulum swing angles &phi;<sub>x</sub> and &phi;<sub>y</sub> with their angular velocities &phi;&#x307;<sub>x</sub> and &phi;&#x307;<sub>y</sub>. The angles &phi; describe how far the rope deviates from vertical in each lateral axis. Physics are integrated using a 4th-order <a href="https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods" target="_blank">Runge-Kutta</a> (RK4) method at 50&nbsp;Hz. Adjustable parameters include drone mass, payload mass, rope length, and drag coefficient.</p>
                 <p><strong>Goal smoother</strong> &mdash; When a new goal position is set (by clicking in the scene), controllers don&rsquo;t receive the raw step change. Instead, an adaptive 3rd-order filter smoothly animates the reference position from the current location toward the goal. The filter is a triple pole at &minus;&sigma;, producing a transfer function &sigma;&sup3;/(s+&sigma;)&sup3; that starts with zero velocity and zero acceleration. The bandwidth &sigma; adapts to the remaining distance: for large moves, &sigma; is reduced so that peak velocity stays below <em>Ref speed</em> and peak acceleration below <em>Ref accel</em>. For small moves (&lt;1&nbsp;m), &sigma; reaches its maximum and the response is fast. This gives distance-dependent timing: short moves settle quickly, long moves take proportionally less time per meter. The yellow sphere shows the current reference position; the green wireframe sphere shows the final goal.</p>
@@ -230,6 +230,6 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=4.31"></script>
+    <script type="module" src="main.js?v=4.32"></script>
 </body>
 </html>
